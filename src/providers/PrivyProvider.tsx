@@ -47,7 +47,6 @@ export function PrivyProvider({ children }: Props) {
                 // Embedded wallets configuration
                 embeddedWallets: {
                     createOnLogin: 'users-without-wallets',
-                    noPromptOnSignature: true,
                 },
 
                 // Session security

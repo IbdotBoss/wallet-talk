@@ -117,14 +117,15 @@ export function Settings() {
         <div className="min-h-screen bg-background safe-top safe-bottom">
             {/* Header */}
             <motion.header
-                className="glass sticky top-0 z-20 px-4 py-3"
+                className="header border-b border-border"
                 initial={{ opacity: 0, y: -20 }}
                 animate={{ opacity: 1, y: 0 }}
             >
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 max-w-2xl mx-auto">
                     <button
                         onClick={handleBack}
-                        className="w-10 h-10 rounded-full hover:bg-surface flex items-center justify-center transition-colors"
+                        className="btn-icon flex-shrink-0"
+                        aria-label="Back"
                     >
                         <svg className="w-6 h-6 text-text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -134,7 +135,7 @@ export function Settings() {
                 </div>
             </motion.header>
 
-            <div className="px-4 py-6">
+            <div className="px-4 py-6 max-w-2xl mx-auto">
                 {/* Profile */}
                 <SettingsSection title="PROFILE">
                     <div className="p-4 flex items-center gap-4">

@@ -12,6 +12,7 @@ import { usePrivy } from '@privy-io/react-auth';
 import { triggerHaptic, hapticSuccess } from '@/lib/haptics';
 import { registerHandle, getHandleForAddress } from '@/lib/UsernameGenerator';
 import { identityRateLimiter } from '@/lib/RateLimiter';
+import { BackgroundLines } from '@/components/ui/background-lines';
 
 export function Onboarding() {
     const navigate = useNavigate();
@@ -64,27 +65,10 @@ export function Onboarding() {
     };
 
     return (
-        <div className="min-h-screen flex flex-col items-center justify-center px-6 safe-top safe-bottom">
-            {/* Background gradient */}
-            <div className="fixed inset-0 bg-gradient-to-b from-background via-background to-background-secondary pointer-events-none" />
-
-            {/* Animated glow orb */}
-            <motion.div
-                className="fixed top-1/4 left-1/2 -translate-x-1/2 w-[500px] h-[500px] rounded-full"
-                style={{
-                    background: 'radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, transparent 70%)',
-                }}
-                animate={{
-                    scale: [1, 1.1, 1],
-                    opacity: [0.5, 0.8, 0.5],
-                }}
-                transition={{
-                    duration: 4,
-                    repeat: Infinity,
-                    ease: 'easeInOut',
-                }}
-            />
-
+        <BackgroundLines
+            className="min-h-screen flex flex-col items-center justify-center px-6 safe-top safe-bottom bg-background"
+            svgOptions={{ duration: 8 }}
+        >
             <AnimatePresence mode="wait">
                 {!showHandle ? (
                     <motion.div
@@ -241,6 +225,6 @@ export function Onboarding() {
                     </motion.div>
                 )}
             </AnimatePresence>
-        </div>
+        </BackgroundLines>
     );
 }
