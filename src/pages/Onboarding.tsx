@@ -2,6 +2,7 @@
  * Onboarding Page - Create Identity or Connect Wallet
  * 
  * Clean Apple-style aesthetics with smooth animations.
+ * White theme with physics-based cursor attractor background.
  * No social logins - Passkeys/Wallets only.
  */
 
@@ -16,6 +17,8 @@ import { ShimmerButtonSimple } from '@/components/ui/shimmer-button-simple';
 import { CursorBorderButton } from '@/components/ui/cursor-border-button';
 import TextCursorProximity from '@/components/ui/text-cursor-proximity';
 import { EncryptedText } from '@/components/ui/encrypted-text';
+import Gravity, { MatterBody } from '@/components/fancy/physics/cursor-attractor-and-gravity';
+import LogoImage from '@/assets/wallet-talk-logo.png';
 
 export function Onboarding() {
     const navigate = useNavigate();
@@ -71,19 +74,35 @@ export function Onboarding() {
     return (
         <div
             ref={containerRef}
-            className="min-h-screen flex flex-col items-center justify-center px-6 safe-top safe-bottom bg-black"
+            className="min-h-screen flex flex-col items-center justify-center px-6 safe-top safe-bottom bg-white relative"
         >
-            {/* Subtle gradient background */}
-            <div className="absolute inset-0 bg-gradient-to-b from-black via-[#0a0a0a] to-black" />
-
-            {/* Soft glow orb */}
-            <div
-                className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[600px] h-[600px] rounded-full opacity-15"
-                style={{
-                    background: 'radial-gradient(circle, rgba(0,122,255,0.4) 0%, transparent 70%)',
-                    filter: 'blur(80px)',
-                }}
-            />
+            {/* Physics-based Cursor Attractor Background */}
+            <Gravity
+                attractorStrength={0.0}
+                cursorStrength={0.0004}
+                cursorFieldRadius={200}
+                className="w-full h-full z-0 absolute inset-0"
+            >
+                {[...Array(120)].map((_, i) => {
+                    const size = Math.max(15, Math.random() * 35);
+                    return (
+                        <MatterBody
+                            key={i}
+                            matterBodyOptions={{ friction: 0.5, restitution: 0.2 }}
+                            x={`${Math.random() * 100}%`}
+                            y={`${Math.random() * 100}%`}
+                        >
+                            <div
+                                className="rounded-full bg-[#e5e7eb]"
+                                style={{
+                                    width: `${size}px`,
+                                    height: `${size}px`,
+                                }}
+                            />
+                        </MatterBody>
+                    );
+                })}
+            </Gravity>
 
             <AnimatePresence mode="wait">
                 {!showHandle ? (
@@ -97,27 +116,16 @@ export function Onboarding() {
                     >
                         {/* Logo */}
                         <motion.div
-                            className="w-20 h-20 rounded-[22px] bg-[#007AFF] flex items-center justify-center mb-8"
-                            style={{
-                                boxShadow: '0 0 60px rgba(0, 122, 255, 0.4)',
-                            }}
+                            className="w-20 h-20 flex items-center justify-center mb-8"
                             initial={{ scale: 0, rotate: -180 }}
                             animate={{ scale: 1, rotate: 0 }}
                             transition={{ type: 'spring', stiffness: 200, damping: 15 }}
                         >
-                            <svg
-                                className="w-10 h-10 text-white"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                                strokeWidth={1.5}
-                            >
-                                <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z"
-                                />
-                            </svg>
+                            <img
+                                src={LogoImage}
+                                alt="Wallet Talk Logo"
+                                className="w-full h-full object-contain"
+                            />
                         </motion.div>
 
                         {/* Title with cursor proximity blur effect */}
@@ -129,7 +137,7 @@ export function Onboarding() {
                         >
                             <TextCursorProximity
                                 containerRef={containerRef}
-                                className="text-4xl font-bold text-white tracking-tight"
+                                className="text-4xl font-bold text-gray-900 tracking-tight"
                                 radius={120}
                                 falloff="gaussian"
                                 styles={{}}
@@ -140,15 +148,15 @@ export function Onboarding() {
 
                         {/* Encrypted scrambling subtitle */}
                         <motion.div
-                            className="text-[#8e8e93] text-center mb-12 text-lg h-7"
+                            className="text-gray-500 text-center mb-12 text-lg h-7"
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             transition={{ delay: 0.3 }}
                         >
                             <EncryptedText
                                 text="Secure, decentralized messaging."
-                                encryptedClassName="text-[#48484a]"
-                                revealedClassName="text-[#8e8e93]"
+                                encryptedClassName="text-gray-400"
+                                revealedClassName="text-gray-500"
                                 revealDelayMs={40}
                                 flipDelayMs={30}
                                 continuous={true}
@@ -199,7 +207,7 @@ export function Onboarding() {
 
                         {/* Footer */}
                         <motion.p
-                            className="text-[#48484a] text-xs text-center mt-12"
+                            className="text-gray-400 text-xs text-center mt-12"
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             transition={{ delay: 0.5 }}
@@ -239,8 +247,8 @@ export function Onboarding() {
                             </motion.svg>
                         </motion.div>
 
-                        <h2 className="text-2xl font-bold text-white mb-2">Welcome!</h2>
-                        <p className="text-[#8e8e93] text-center mb-6">Your identity has been created.</p>
+                        <h2 className="text-2xl font-bold text-gray-900 mb-2">Welcome!</h2>
+                        <p className="text-gray-500 text-center mb-6">Your identity has been created.</p>
 
                         {/* Handle display */}
                         <motion.div
@@ -249,9 +257,9 @@ export function Onboarding() {
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: 0.2 }}
                         >
-                            <p className="text-[#48484a] text-sm mb-2">Your Handle</p>
+                            <p className="text-gray-500 text-sm mb-2">Your Handle</p>
                             <p className="text-3xl font-bold text-[#007AFF]">{generatedHandle}</p>
-                            <p className="text-[#48484a] text-xs mt-3 flex items-center justify-center gap-1">
+                            <p className="text-gray-500 text-xs mt-3 flex items-center justify-center gap-1">
                                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                 </svg>

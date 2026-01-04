@@ -34,17 +34,17 @@ export function CursorBorderButton({ children, className, onClick, ...props }: C
             onMouseLeave={() => setOpacity(0)}
             onClick={onClick}
             className={cn(
-                "relative inline-flex h-12 items-center justify-center rounded-md border border-slate-800 bg-slate-950 px-6 font-medium text-slate-300 overflow-hidden group cursor-pointer w-full",
+                "relative inline-flex h-12 items-center justify-center rounded-xl border border-gray-200 bg-white px-6 font-semibold text-gray-900 overflow-hidden group cursor-pointer w-full transition-all hover:border-gray-300 hover:shadow-sm active:scale-[0.98]",
                 className
             )}
             {...props}
         >
-            {/* The "Following" Gradient Border Effect */}
+            {/* The "Following" Gradient Border Effect - subtle for white theme */}
             <div
                 className="pointer-events-none absolute -inset-px transition-opacity duration-300"
                 style={{
                     opacity,
-                    background: `radial-gradient(100px circle at ${position.x}px ${position.y}px, rgba(94, 234, 212, 0.4), transparent 80%)`,
+                    background: `radial-gradient(120px circle at ${position.x}px ${position.y}px, rgba(0, 0, 0, 0.05), transparent 80%)`,
                 }}
             />
             <span className="relative z-10 flex items-center justify-center gap-2">{children}</span>
