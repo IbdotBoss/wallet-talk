@@ -33,7 +33,7 @@ export function Onboarding() {
         if (authenticated && user?.wallet?.address) {
             const existingHandle = getHandleForAddress(user.wallet.address);
             if (existingHandle) {
-                navigate('/conversations');
+                navigate('/messages');
             } else {
                 // Generate handle for new user
                 if (identityRateLimiter.check(user.id)) {
@@ -68,7 +68,7 @@ export function Onboarding() {
 
     const handleContinue = () => {
         triggerHaptic('medium');
-        navigate('/conversations');
+        navigate('/messages');
     };
 
     return (
@@ -171,38 +171,50 @@ export function Onboarding() {
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: 0.4 }}
                         >
-                            {/* Create Identity - Simple Shimmer Button */}
-                            <ShimmerButtonSimple
-                                onClick={handleCreateIdentity}
-                                className="w-full max-w-xs"
-                                disabled={isCreating}
+                            {/* Create Identity - Premium Button with hover effects */}
+                            <motion.div
+                                whileHover={{ scale: 1.02 }}
+                                whileTap={{ scale: 0.98 }}
+                                transition={{ type: 'spring', stiffness: 400, damping: 20 }}
                             >
-                                {isCreating ? (
-                                    <motion.div
-                                        className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full"
-                                        animate={{ rotate: 360 }}
-                                        transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-                                    />
-                                ) : (
-                                    <>
-                                        <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4" />
-                                        </svg>
-                                        Create Identity
-                                    </>
-                                )}
-                            </ShimmerButtonSimple>
+                                <ShimmerButtonSimple
+                                    onClick={handleCreateIdentity}
+                                    className="w-full max-w-xs"
+                                    disabled={isCreating}
+                                >
+                                    {isCreating ? (
+                                        <motion.div
+                                            className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full"
+                                            animate={{ rotate: 360 }}
+                                            transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                                        />
+                                    ) : (
+                                        <>
+                                            <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4" />
+                                            </svg>
+                                            Create Identity
+                                        </>
+                                    )}
+                                </ShimmerButtonSimple>
+                            </motion.div>
 
                             {/* Connect Wallet - Cursor Border Button */}
-                            <CursorBorderButton
-                                onClick={handleConnect}
-                                className="w-full max-w-xs"
+                            <motion.div
+                                whileHover={{ scale: 1.02 }}
+                                whileTap={{ scale: 0.98 }}
+                                transition={{ type: 'spring', stiffness: 400, damping: 20 }}
                             >
-                                <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                                </svg>
-                                Connect Wallet
-                            </CursorBorderButton>
+                                <CursorBorderButton
+                                    onClick={handleConnect}
+                                    className="w-full max-w-xs"
+                                >
+                                    <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                                    </svg>
+                                    Connect Wallet
+                                </CursorBorderButton>
+                            </motion.div>
                         </motion.div>
 
                         {/* Footer */}

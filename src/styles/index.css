@@ -64,6 +64,21 @@ html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 body {
@@ -138,13 +153,14 @@ body {
     @apply relative overflow-hidden rounded-xl px-6 py-3 font-semibold;
     background: var(--color-accent);
     color: white;
-    transition: all 0.2s ease;
+    transition: all 0.25s var(--ease-apple);
     min-height: 50px;
   }
 
   .btn-primary:hover {
     background: var(--color-accent-hover);
     transform: scale(1.02);
+    box-shadow: 0 8px 24px rgba(0, 122, 255, 0.25);
   }
 
   .btn-primary:active {
@@ -162,13 +178,14 @@ body {
     background: var(--color-bg-secondary);
     color: var(--color-text-primary);
     border: 1px solid var(--color-border);
-    transition: all 0.2s ease;
+    transition: all 0.25s var(--ease-apple);
     min-height: 50px;
   }
 
   .btn-secondary:hover {
     background: var(--color-bg-tertiary);
     border-color: var(--color-border-hover);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   }
 
   .btn-secondary:active {
@@ -184,23 +201,25 @@ body {
     @apply rounded-xl px-4 py-2 font-medium;
     color: var(--color-accent);
     background: transparent;
-    transition: all 0.2s ease;
+    transition: all 0.25s var(--ease-apple);
     min-height: 44px;
   }
 
   .btn-ghost:hover {
     background: rgba(0, 122, 255, 0.1);
+    transform: translateY(-1px);
   }
 
   .btn-icon {
     @apply flex items-center justify-center rounded-full;
-    transition: all 0.2s ease;
+    transition: all 0.25s var(--ease-apple);
     min-width: 44px;
     min-height: 44px;
   }
 
   .btn-icon:hover {
     background: var(--color-bg-secondary);
+    transform: scale(1.08);
   }
 
   .btn-icon:active {
@@ -251,6 +270,12 @@ body {
   .avatar {
     @apply rounded-full flex items-center justify-center font-semibold text-white;
     background: linear-gradient(135deg, var(--color-accent) 0%, #5856D6 100%);
+    transition: all 0.3s var(--ease-apple);
+  }
+
+  .avatar:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
   }
 
   .avatar-sm {
@@ -275,15 +300,17 @@ body {
 
   .conversation-item {
     @apply flex items-center gap-3 p-4 rounded-xl cursor-pointer;
-    transition: all 0.2s ease;
+    transition: all 0.25s var(--ease-apple);
   }
 
   .conversation-item:hover {
     background: var(--color-bg-secondary);
+    transform: translateX(4px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   }
 
   .conversation-item:active {
-    transform: scale(0.98);
+    transform: scale(0.98) translateX(4px);
   }
 
   /* ========================================
@@ -342,16 +369,16 @@ body {
     box-shadow: 0 4px 12px rgba(0, 122, 255, 0.4);
     bottom: calc(24px + var(--safe-area-inset-bottom));
     right: 24px;
-    transition: all 0.2s ease;
+    transition: all 0.3s var(--ease-apple);
   }
 
   .fab:hover {
-    transform: scale(1.1);
-    box-shadow: 0 6px 20px rgba(0, 122, 255, 0.5);
+    transform: scale(1.1) translateY(-2px) rotate(90deg);
+    box-shadow: 0 8px 24px rgba(0, 122, 255, 0.5);
   }
 
   .fab:active {
-    transform: scale(0.95);
+    transform: scale(0.95) rotate(90deg);
   }
 
   /* ========================================
@@ -451,8 +478,15 @@ textarea {
 }
 
 /* ========================================
-   ANIMATIONS
+   ANIMATIONS - Apple-Style
    ======================================== */
+
+/* Apple's signature easing */
+:root {
+  --ease-apple: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-apple-in: cubic-bezier(0.42, 0, 1, 1);
+  --ease-apple-out: cubic-bezier(0, 0, 0.58, 1);
+}
 
 @keyframes shimmer {
   0% {
@@ -465,7 +499,6 @@ textarea {
 }
 
 @keyframes pulse-dot {
-
   0%,
   100% {
     opacity: 0.5;
@@ -498,12 +531,54 @@ textarea {
   }
 }
 
-.animate-in {
-  animation: fadeIn 0.3s ease-out forwards;
+@keyframes slideInFromRight {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
-.animate-slide-up {
-  animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+@keyframes slideInFromLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes gentleBounce {
+  0% {
+    transform: translateY(0) scale(1);
+  }
+
+  50% {
+    transform: translateY(-8px) scale(1.02);
+  }
+
+  100% {
+    transform: translateY(0) scale(1);
+  }
 }
 
 @keyframes shimmer-slide {
@@ -514,6 +589,60 @@ textarea {
   100% {
     transform: translateX(100%);
   }
+}
+
+@keyframes breathing {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+
+  50% {
+    transform: scale(1.02);
+    opacity: 0.9;
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+.animate-in {
+  animation: fadeIn 0.3s var(--ease-apple) forwards;
+}
+
+.animate-slide-up {
+  animation: slideUp 0.4s var(--ease-apple) forwards;
+}
+
+.animate-slide-in-right {
+  animation: slideInFromRight 0.4s var(--ease-apple) forwards;
+}
+
+.animate-slide-in-left {
+  animation: slideInFromLeft 0.4s var(--ease-apple) forwards;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.3s var(--ease-apple) forwards;
+}
+
+.animate-gentle-bounce {
+  animation: gentleBounce 0.6s var(--ease-apple) forwards;
+}
+
+.animate-breathing {
+  animation: breathing 3s ease-in-out infinite;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
 }
 
 

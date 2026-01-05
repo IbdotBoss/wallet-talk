@@ -1,7 +1,7 @@
 /**
- * Settings Page - Profile, wallet management, and app settings
+ * Settings Page - Premium fintech-style settings
  * 
- * "Escape Hatch" for embedded wallet export.
+ * White theme with modern card design
  */
 
 import { useState } from 'react';
@@ -25,6 +25,7 @@ export function Settings() {
     const [showClearConfirm, setShowClearConfirm] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
     const [blockedAddresses, setBlockedAddresses] = useState(getBlockedAddresses());
+    const [copiedAddress, setCopiedAddress] = useState(false);
 
     const embeddedWallet = wallets?.find((w) => w.walletClientType === 'privy');
     const externalWallet = wallets?.find((w) => w.walletClientType !== 'privy');
@@ -34,7 +35,16 @@ export function Settings() {
 
     const handleBack = () => {
         triggerHaptic('light');
-        navigate('/conversations');
+        navigate('/messages');
+    };
+
+    const handleCopyAddress = async () => {
+        if (user?.wallet?.address) {
+            await navigator.clipboard.writeText(user.wallet.address);
+            setCopiedAddress(true);
+            hapticSuccess();
+            setTimeout(() => setCopiedAddress(false), 2000);
+        }
     };
 
     const handleExportWallet = async () => {
@@ -77,174 +87,261 @@ export function Settings() {
         navigate('/');
     };
 
-    const SettingsSection = ({ title, children }: { title: string; children: React.ReactNode }) => (
-        <div className="mb-6">
-            <h2 className="text-text-muted text-sm font-medium mb-3 px-1">{title}</h2>
-            <div className="glass-card divide-y divide-border">{children}</div>
-        </div>
-    );
-
-    const SettingsRow = ({
-        label,
-        value,
-        action,
-        actionLabel,
-        danger
-    }: {
-        label: string;
-        value?: string;
-        action?: () => void;
-        actionLabel?: string;
-        danger?: boolean;
-    }) => (
-        <div className="flex items-center justify-between px-4 py-3">
-            <div className="flex-1 min-w-0">
-                <span className={`text-sm ${danger ? 'text-error' : 'text-text-primary'}`}>{label}</span>
-                {value && <p className="text-text-muted text-xs truncate mt-0.5">{value}</p>}
-            </div>
-            {action && (
-                <button
-                    onClick={action}
-                    className={`text-sm font-medium ${danger ? 'text-error' : 'text-accent'} hover:opacity-80 transition-opacity`}
-                >
-                    {actionLabel || 'Edit'}
-                </button>
-            )}
-        </div>
-    );
-
     return (
-        <div className="min-h-screen bg-background safe-top safe-bottom">
+        <div className="min-h-screen bg-gray-50">
             {/* Header */}
             <motion.header
-                className="header border-b border-border"
+                className="sticky top-0 z-10 bg-white/80 backdrop-blur-xl border-b border-gray-100"
                 initial={{ opacity: 0, y: -20 }}
                 animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
             >
-                <div className="flex items-center gap-3 max-w-2xl mx-auto">
+                <div className="flex items-center gap-4 px-4 py-4 max-w-2xl mx-auto">
                     <button
                         onClick={handleBack}
-                        className="btn-icon flex-shrink-0"
+                        className="w-10 h-10 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors"
                         aria-label="Back"
                     >
-                        <svg className="w-6 h-6 text-text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg className="w-5 h-5 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                         </svg>
                     </button>
-                    <h1 className="text-xl font-semibold text-text-primary">Settings</h1>
+                    <h1 className="text-xl font-bold text-gray-900">Settings</h1>
                 </div>
             </motion.header>
 
-            <div className="px-4 py-6 max-w-2xl mx-auto">
-                {/* Profile */}
-                <SettingsSection title="PROFILE">
-                    <div className="p-4 flex items-center gap-4">
-                        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-accent to-purple-500 flex items-center justify-center">
-                            <span className="text-white text-2xl font-semibold">
-                                {userHandle ? userHandle[1].toUpperCase() : '?'}
-                            </span>
+            <div className="px-4 py-6 max-w-2xl mx-auto space-y-6">
+                {/* Profile Card */}
+                <motion.div
+                    className="bg-white rounded-2xl shadow-sm overflow-hidden"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.1 }}
+                >
+                    <div className="p-6">
+                        <div className="flex items-center gap-4">
+                            {/* Avatar with gradient */}
+                            <div className="relative">
+                                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-violet-500 via-purple-500 to-fuchsia-500 flex items-center justify-center shadow-lg">
+                                    <span className="text-white text-3xl font-bold">
+                                        {userHandle ? userHandle[1]?.toUpperCase() : '?'}
+                                    </span>
+                                </div>
+                                {/* Online indicator */}
+                                <div className="absolute bottom-1 right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white" />
+                            </div>
+
+                            <div className="flex-1 min-w-0">
+                                <h2 className="text-xl font-bold text-gray-900">{userHandle || 'Loading...'}</h2>
+                                <button
+                                    onClick={handleCopyAddress}
+                                    className="flex items-center gap-1.5 text-gray-500 text-sm mt-1 hover:text-gray-700 transition-colors"
+                                >
+                                    <span className="font-mono">
+                                        {user?.wallet?.address ? truncateAddress(user.wallet.address) : ''}
+                                    </span>
+                                    {copiedAddress ? (
+                                        <svg className="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                        </svg>
+                                    ) : (
+                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                        </svg>
+                                    )}
+                                </button>
+                            </div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                            <p className="text-lg font-semibold text-text-primary">{userHandle || 'Loading...'}</p>
-                            <p className="text-text-muted text-sm truncate">
-                                {user?.wallet?.address ? truncateAddress(user.wallet.address) : ''}
-                            </p>
-                            <p className="text-text-muted text-xs flex items-center gap-1 mt-1">
-                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                                Username is a local alias only
+
+                        <div className="mt-4 p-3 bg-gray-50 rounded-xl flex items-start gap-2">
+                            <svg className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <p className="text-xs text-gray-500">
+                                Your username is a local alias only and is not stored on-chain or shared with other users.
                             </p>
                         </div>
                     </div>
-                </SettingsSection>
+                </motion.div>
 
-                {/* Wallet */}
-                <SettingsSection title="WALLET">
-                    {embeddedWallet && (
-                        <SettingsRow
-                            label="Embedded Wallet"
-                            value={truncateAddress(embeddedWallet.address)}
-                            action={() => setShowExportConfirm(true)}
-                            actionLabel="Export"
-                        />
-                    )}
-                    {externalWallet && (
-                        <SettingsRow
-                            label="External Wallet"
-                            value={`${externalWallet.walletClientType} • ${truncateAddress(externalWallet.address)}`}
-                        />
-                    )}
-                </SettingsSection>
+                {/* Wallet Section */}
+                <motion.div
+                    className="bg-white rounded-2xl shadow-sm overflow-hidden"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.15 }}
+                >
+                    <div className="px-6 py-4 border-b border-gray-100">
+                        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Wallet</h3>
+                    </div>
+
+                    <div className="divide-y divide-gray-100">
+                        {embeddedWallet && (
+                            <div className="px-6 py-4 flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center">
+                                        <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <p className="font-medium text-gray-900">Embedded Wallet</p>
+                                        <p className="text-sm text-gray-500 font-mono">{truncateAddress(embeddedWallet.address)}</p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => setShowExportConfirm(true)}
+                                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors"
+                                >
+                                    Export
+                                </button>
+                            </div>
+                        )}
+
+                        {externalWallet && (
+                            <div className="px-6 py-4 flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-500 to-amber-400 flex items-center justify-center">
+                                    <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                                    </svg>
+                                </div>
+                                <div>
+                                    <p className="font-medium text-gray-900 capitalize">{externalWallet.walletClientType}</p>
+                                    <p className="text-sm text-gray-500 font-mono">{truncateAddress(externalWallet.address)}</p>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </motion.div>
 
                 {/* Blocked Users */}
                 {blockedAddresses.length > 0 && (
-                    <SettingsSection title="BLOCKED USERS">
-                        {blockedAddresses.map((address) => (
-                            <SettingsRow
-                                key={address}
-                                label={getHandleForAddress(address) || truncateAddress(address)}
-                                value={getHandleForAddress(address) ? truncateAddress(address) : undefined}
-                                action={() => handleUnblock(address)}
-                                actionLabel="Unblock"
-                            />
-                        ))}
-                    </SettingsSection>
+                    <motion.div
+                        className="bg-white rounded-2xl shadow-sm overflow-hidden"
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.2 }}
+                    >
+                        <div className="px-6 py-4 border-b border-gray-100">
+                            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
+                                Blocked Users ({blockedAddresses.length})
+                            </h3>
+                        </div>
+
+                        <div className="divide-y divide-gray-100">
+                            {blockedAddresses.map((address) => (
+                                <div key={address} className="px-6 py-4 flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center">
+                                            <span className="text-gray-500 font-medium">
+                                                {(getHandleForAddress(address)?.[1] || address[2] || '?').toUpperCase()}
+                                            </span>
+                                        </div>
+                                        <div>
+                                            <p className="font-medium text-gray-900">
+                                                {getHandleForAddress(address) || truncateAddress(address)}
+                                            </p>
+                                            {getHandleForAddress(address) && (
+                                                <p className="text-sm text-gray-500 font-mono">{truncateAddress(address)}</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => handleUnblock(address)}
+                                        className="px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-xl transition-colors"
+                                    >
+                                        Unblock
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    </motion.div>
                 )}
 
-                {/* Data */}
-                <SettingsSection title="DATA">
-                    <SettingsRow
-                        label="Clear All Data"
-                        value="Clears message cache, usernames, and blocklist"
-                        action={() => setShowClearConfirm(true)}
-                        actionLabel="Clear"
-                        danger
-                    />
-                </SettingsSection>
+                {/* Data Management */}
+                <motion.div
+                    className="bg-white rounded-2xl shadow-sm overflow-hidden"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.25 }}
+                >
+                    <div className="px-6 py-4 border-b border-gray-100">
+                        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Data</h3>
+                    </div>
 
-                {/* Logout */}
+                    <div className="px-6 py-4">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                                    <svg className="w-5 h-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                </div>
+                                <div>
+                                    <p className="font-medium text-gray-900">Clear All Data</p>
+                                    <p className="text-sm text-gray-500">Messages, usernames, and blocklist</p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setShowClearConfirm(true)}
+                                className="px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-xl transition-colors"
+                            >
+                                Clear
+                            </button>
+                        </div>
+                    </div>
+                </motion.div>
+
+                {/* Sign Out Button */}
                 <motion.button
                     onClick={handleLogout}
-                    className="w-full glass-card py-4 text-center text-error font-medium"
+                    className="w-full py-4 bg-white rounded-2xl shadow-sm text-red-500 font-semibold text-center hover:bg-red-50 transition-colors"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.3 }}
                     whileTap={{ scale: 0.98 }}
                 >
                     Sign Out
                 </motion.button>
 
                 {/* Version */}
-                <p className="text-text-muted text-xs text-center mt-8">
+                <motion.p
+                    className="text-gray-400 text-xs text-center pt-4 pb-8"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.35 }}
+                >
                     Antigravity v0.1.0 • XMTP Powered
-                </p>
+                </motion.p>
             </div>
 
             {/* Export Wallet Modal */}
             <AnimatePresence>
                 {showExportConfirm && (
                     <motion.div
-                        className="fixed inset-0 z-50 flex items-end justify-center p-4 bg-black/60"
+                        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         onClick={() => setShowExportConfirm(false)}
                     >
                         <motion.div
-                            className="w-full max-w-md glass-card p-6 mb-safe"
-                            initial={{ opacity: 0, y: 100 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: 100 }}
+                            className="w-full max-w-md bg-white rounded-2xl p-6 shadow-2xl"
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
                             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
                             onClick={(e) => e.stopPropagation()}
                         >
                             <div className="text-center mb-6">
-                                <div className="w-16 h-16 rounded-full bg-warning/20 flex items-center justify-center mx-auto mb-4">
-                                    <svg className="w-8 h-8 text-warning" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <div className="w-16 h-16 rounded-full bg-yellow-100 flex items-center justify-center mx-auto mb-4">
+                                    <svg className="w-8 h-8 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                                     </svg>
                                 </div>
-                                <h3 className="text-xl font-semibold text-text-primary mb-2">Export Private Key</h3>
-                                <p className="text-text-secondary text-sm">
-                                    You will need to re-authenticate with your passkey. Never share your private key with anyone.
+                                <h3 className="text-xl font-bold text-gray-900 mb-2">Export Private Key</h3>
+                                <p className="text-gray-500 text-sm">
+                                    You will need to re-authenticate. Never share your private key with anyone.
                                 </p>
                             </div>
 
@@ -252,7 +349,7 @@ export function Settings() {
                                 <button
                                     onClick={handleExportWallet}
                                     disabled={isExporting}
-                                    className="btn-primary w-full py-4 flex items-center justify-center gap-2"
+                                    className="w-full py-4 rounded-xl bg-black text-white font-semibold flex items-center justify-center gap-2 hover:bg-gray-800 disabled:opacity-50 transition-colors"
                                 >
                                     {isExporting ? (
                                         <motion.div
@@ -271,7 +368,7 @@ export function Settings() {
                                 </button>
                                 <button
                                     onClick={() => setShowExportConfirm(false)}
-                                    className="btn-secondary w-full py-4"
+                                    className="w-full py-4 rounded-xl border border-gray-200 text-gray-700 font-semibold hover:bg-gray-50 transition-colors"
                                 >
                                     Cancel
                                 </button>
@@ -285,28 +382,28 @@ export function Settings() {
             <AnimatePresence>
                 {showClearConfirm && (
                     <motion.div
-                        className="fixed inset-0 z-50 flex items-end justify-center p-4 bg-black/60"
+                        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         onClick={() => setShowClearConfirm(false)}
                     >
                         <motion.div
-                            className="w-full max-w-md glass-card p-6 mb-safe"
-                            initial={{ opacity: 0, y: 100 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: 100 }}
+                            className="w-full max-w-md bg-white rounded-2xl p-6 shadow-2xl"
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
                             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
                             onClick={(e) => e.stopPropagation()}
                         >
                             <div className="text-center mb-6">
-                                <div className="w-16 h-16 rounded-full bg-error/20 flex items-center justify-center mx-auto mb-4">
-                                    <svg className="w-8 h-8 text-error" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
+                                    <svg className="w-8 h-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                     </svg>
                                 </div>
-                                <h3 className="text-xl font-semibold text-text-primary mb-2">Clear All Data</h3>
-                                <p className="text-text-secondary text-sm">
+                                <h3 className="text-xl font-bold text-gray-900 mb-2">Clear All Data</h3>
+                                <p className="text-gray-500 text-sm">
                                     This will delete your local message cache, username mappings, and blocklist. This cannot be undone.
                                 </p>
                             </div>
@@ -314,13 +411,13 @@ export function Settings() {
                             <div className="space-y-3">
                                 <button
                                     onClick={handleClearData}
-                                    className="w-full py-4 rounded-xl bg-error text-white font-semibold hover:opacity-90 transition-opacity"
+                                    className="w-full py-4 rounded-xl bg-red-500 text-white font-semibold hover:bg-red-600 transition-colors"
                                 >
                                     Clear Data
                                 </button>
                                 <button
                                     onClick={() => setShowClearConfirm(false)}
-                                    className="btn-secondary w-full py-4"
+                                    className="w-full py-4 rounded-xl border border-gray-200 text-gray-700 font-semibold hover:bg-gray-50 transition-colors"
                                 >
                                     Cancel
                                 </button>

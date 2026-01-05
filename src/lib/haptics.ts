@@ -5,7 +5,7 @@
  * Falls back gracefully on unsupported devices.
  */
 
-type HapticIntensity = 'light' | 'medium' | 'heavy';
+export type HapticIntensity = 'light' | 'medium' | 'heavy';
 
 // Vibration patterns (in milliseconds)
 const PATTERNS: Record<HapticIntensity, number | number[]> = {

@@ -79,6 +79,11 @@ function saveHandleMappings(mappings: HandleMapping): void {
  * Gets the handle for an address, or null if not found
  */
 export function getHandleForAddress(address: string): string | null {
+    // Guard against undefined/null address
+    if (!address) {
+        return null;
+    }
+
     const mappings = getHandleMappings();
 
     // Reverse lookup: find handle by address

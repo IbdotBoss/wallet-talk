@@ -108,12 +108,12 @@ export function Chat() {
         triggerHaptic('heavy');
         addToBlocklist(address);
         setShowActions(false);
-        navigate('/conversations');
+        navigate('/messages');
     };
 
     const handleBack = () => {
         triggerHaptic('light');
-        navigate('/conversations');
+        navigate('/messages');
     };
 
     const formatMessageTime = (date: Date) => {
@@ -148,6 +148,7 @@ export function Chat() {
                 className="header border-b border-border"
                 initial={{ opacity: 0, y: -20 }}
                 animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
             >
                 <div className="flex items-center gap-3 max-w-3xl mx-auto w-full">
                     <button
@@ -202,9 +203,14 @@ export function Chat() {
                                     />
                                     <motion.div
                                         className="absolute right-0 top-full mt-2 glass-card py-2 min-w-[180px] z-50"
-                                        initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                                        exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                                        initial={{ opacity: 0, scale: 0.9, y: -10, rotateX: -15 }}
+                                        animate={{ opacity: 1, scale: 1, y: 0, rotateX: 0 }}
+                                        exit={{ opacity: 0, scale: 0.9, y: -10, rotateX: -15 }}
+                                        transition={{
+                                            type: 'spring',
+                                            stiffness: 400,
+                                            damping: 25,
+                                        }}
                                     >
                                         <button
                                             onClick={() => {
@@ -253,16 +259,31 @@ export function Chat() {
                     ) : chatMessages.length === 0 ? (
                         <motion.div
                             className="flex flex-col items-center justify-center h-full py-20 text-center"
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{
+                                duration: 0.6,
+                                ease: [0.16, 1, 0.3, 1],
+                                delay: 0.2,
+                            }}
                         >
-                            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-accent/20 to-purple-500/20 flex items-center justify-center mb-6">
+                            <motion.div
+                                className="w-20 h-20 rounded-full bg-gradient-to-br from-accent/20 to-purple-500/20 flex items-center justify-center mb-6"
+                                animate={{
+                                    scale: [1, 1.05, 1],
+                                }}
+                                transition={{
+                                    duration: 2,
+                                    repeat: Infinity,
+                                    ease: "easeInOut",
+                                }}
+                            >
                                 <div className="avatar avatar-lg">
                                     <span>
                                         {peerHandle ? peerHandle[1].toUpperCase() : (address?.[2] || '?').toUpperCase()}
                                     </span>
                                 </div>
-                            </div>
+                            </motion.div>
                             <h3 className="text-lg font-semibold text-text-primary mb-2">
                                 Start chatting with {displayName}
                             </h3>
@@ -300,9 +321,14 @@ export function Chat() {
                                         {/* Message bubble */}
                                         <motion.div
                                             className={`flex ${isSent ? 'justify-end' : 'justify-start'} mb-1`}
-                                            initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                                            initial={{ opacity: 0, y: 12, scale: 0.96 }}
                                             animate={{ opacity: 1, y: 0, scale: 1 }}
-                                            transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                                            transition={{
+                                                type: 'spring',
+                                                stiffness: 400,
+                                                damping: 24,
+                                                mass: 0.8,
+                                            }}
                                         >
                                             <div
                                                 className={`max-w-[80%] md:max-w-[65%] px-4 py-2.5 ${isSent ? 'bubble-sent' : 'bubble-received'
@@ -330,6 +356,7 @@ export function Chat() {
                 className="input-bar border-t border-border"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1], delay: 0.1 }}
             >
                 <div className="max-w-3xl mx-auto flex items-end gap-3">
                     <div className="flex-1 relative">
@@ -353,8 +380,16 @@ export function Chat() {
                         onClick={handleSend}
                         disabled={!inputValue.trim() || isSending || !isConnected || isAddressBlocked}
                         className="w-12 h-12 rounded-full bg-accent flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
+                        whileHover={{
+                            scale: 1.08,
+                            boxShadow: '0 8px 24px rgba(0, 122, 255, 0.4)',
+                        }}
+                        whileTap={{ scale: 0.92 }}
+                        transition={{
+                            type: 'spring',
+                            stiffness: 400,
+                            damping: 20,
+                        }}
                         aria-label="Send message"
                     >
                         {isSending ? (

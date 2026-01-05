@@ -108,7 +108,7 @@ export function Conversations() {
                 className="header border-b border-border"
                 initial={{ opacity: 0, y: -20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3 }}
+                transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
             >
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -188,22 +188,52 @@ export function Conversations() {
             {/* Conversation list */}
             <div className="flex-1 overflow-y-auto">
                 {isLoading ? (
-                    <div className="p-4 space-y-3">
+                    <motion.div 
+                        className="p-4 space-y-3"
+                        initial="hidden"
+                        animate="visible"
+                        variants={{
+                            visible: { transition: { staggerChildren: 0.08 } },
+                        }}
+                    >
                         {[...Array(5)].map((_, i) => (
-                            <div key={i} className="shimmer h-20 rounded-2xl" />
+                            <motion.div 
+                                key={i} 
+                                className="shimmer h-20 rounded-2xl"
+                                variants={{
+                                    hidden: { opacity: 0, x: -20 },
+                                    visible: { opacity: 1, x: 0 },
+                                }}
+                            />
                         ))}
-                    </div>
+                    </motion.div>
                 ) : conversations.length === 0 ? (
                     <motion.div
                         className="empty-state h-full"
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
+                        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        transition={{
+                            type: 'spring',
+                            stiffness: 300,
+                            damping: 20,
+                            delay: 0.2,
+                        }}
                     >
-                        <div className="empty-state-icon">
+                        <motion.div 
+                            className="empty-state-icon"
+                            animate={{ 
+                                scale: [1, 1.05, 1],
+                            }}
+                            transition={{
+                                duration: 2,
+                                repeat: Infinity,
+                                ease: "easeInOut",
+                            }}
+                        >
                             <svg className="w-10 h-10 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                             </svg>
-                        </div>
+                        </motion.div>
                         <h3 className="text-lg font-semibold text-text-primary mb-2">No conversations yet</h3>
                         <p className="text-text-muted text-sm mb-6 max-w-xs">
                             Start a new chat with any Ethereum address to begin messaging
@@ -222,10 +252,10 @@ export function Conversations() {
                         initial="hidden"
                         animate="visible"
                         variants={{
-                            visible: { transition: { staggerChildren: 0.05 } },
+                            visible: { transition: { staggerChildren: 0.06 } },
                         }}
                     >
-                        {conversations.map((conversation) => {
+                        {conversations.map((conversation, index) => {
                             const peerHandle = getHandleForAddress(conversation.peerAddress);
                             return (
                                 <motion.button
@@ -233,10 +263,21 @@ export function Conversations() {
                                     onClick={() => handleOpenChat(conversation.peerAddress)}
                                     className="conversation-item w-full text-left group mx-2 md:mx-4"
                                     variants={{
-                                        hidden: { opacity: 0, x: -20 },
-                                        visible: { opacity: 1, x: 0 },
+                                        hidden: { opacity: 0, y: 20, scale: 0.95 },
+                                        visible: { 
+                                            opacity: 1, 
+                                            y: 0, 
+                                            scale: 1,
+                                            transition: {
+                                                type: 'spring',
+                                                stiffness: 300,
+                                                damping: 24,
+                                                delay: index * 0.03,
+                                            }
+                                        },
                                     }}
-                                    whileTap={{ scale: 0.98 }}
+                                    whileTap={{ scale: 0.97 }}
+                                    whileHover={{ x: 4 }}
                                 >
                                     {/* Avatar */}
                                     <div className="avatar avatar-lg flex-shrink-0">
@@ -295,11 +336,21 @@ export function Conversations() {
                 onClick={handleNewChat}
                 disabled={!isConnected}
                 className="fab"
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ type: 'spring', stiffness: 400, damping: 15, delay: 0.3 }}
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.95 }}
+                initial={{ scale: 0, rotate: -90 }}
+                animate={{ scale: 1, rotate: 0 }}
+                transition={{ 
+                    type: 'spring', 
+                    stiffness: 400, 
+                    damping: 15, 
+                    delay: 0.4,
+                    rotate: { duration: 0.6, ease: [0.16, 1, 0.3, 1] }
+                }}
+                whileHover={{ 
+                    scale: 1.1, 
+                    rotate: 90,
+                    y: -2,
+                }}
+                whileTap={{ scale: 0.95, rotate: 90 }}
                 aria-label="New conversation"
             >
                 <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -322,10 +373,15 @@ export function Conversations() {
                         />
                         <motion.div
                             className="modal relative z-10"
-                            initial={{ scale: 0.9, opacity: 0, y: 20 }}
-                            animate={{ scale: 1, opacity: 1, y: 0 }}
-                            exit={{ scale: 0.9, opacity: 0, y: 20 }}
-                            transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                            initial={{ scale: 0.85, opacity: 0, y: 40, rotateX: 10 }}
+                            animate={{ scale: 1, opacity: 1, y: 0, rotateX: 0 }}
+                            exit={{ scale: 0.85, opacity: 0, y: 40, rotateX: 10 }}
+                            transition={{ 
+                                type: 'spring', 
+                                stiffness: 300, 
+                                damping: 20,
+                                mass: 0.8,
+                            }}
                         >
                             <div className="flex items-center justify-between mb-4">
                                 <h2 className="text-xl font-bold text-text-primary">New Conversation</h2>
