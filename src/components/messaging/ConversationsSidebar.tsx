@@ -13,6 +13,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePrivy } from '@privy-io/react-auth';
 import { useMessageStore } from '@/store/messageStore';
+import { useIdentityStore } from '@/store/identityStore';
 import { useSecureXMTP } from '@/hooks/useSecureXMTP';
 import { getHandleForAddress } from '@/lib/UsernameGenerator';
 import { truncateAddress, validateAddress } from '@/lib/SecurityService';
@@ -30,6 +31,7 @@ export function ConversationsSidebar({
     const navigate = useNavigate();
     const { user } = usePrivy();
     const { conversations, isLoading } = useMessageStore();
+    const { identity } = useIdentityStore();
     const { isConnected, isConnecting, startConversation } = useSecureXMTP();
 
     const [searchQuery, setSearchQuery] = useState('');
@@ -41,9 +43,8 @@ export function ConversationsSidebar({
     // Mock pinned state (in production, would come from store)
     const [pinnedAddresses] = useState<Set<string>>(new Set());
 
-    const userHandle = user?.wallet?.address
-        ? getHandleForAddress(user.wallet.address)
-        : null;
+    // Use identity store for display name
+    const userDisplayName = identity?.displayName || null;
 
     // Filter conversations by search
     const filteredConversations = (conversations || []).filter(conv => {
@@ -61,17 +62,20 @@ export function ConversationsSidebar({
     const pinnedConversations = filteredConversations.filter(c => c && pinnedAddresses.has(c.peerAddress));
     const regularConversations = filteredConversations.filter(c => c && !pinnedAddresses.has(c.peerAddress));
 
-    const formatTime = (date?: Date) => {
+    const formatTime = (date?: Date | string) => {
         if (!date) return '';
+        const dateObj = new Date(date);
+        if (isNaN(dateObj.getTime())) return '';
+
         const now = new Date();
-        const diff = now.getTime() - date.getTime();
+        const diff = now.getTime() - dateObj.getTime();
         const minutes = Math.floor(diff / (1000 * 60));
         const hours = Math.floor(diff / (1000 * 60 * 60));
 
         if (minutes < 1) return 'Now';
         if (minutes < 60) return `${minutes}m`;
         if (hours < 24) return `${hours}h`;
-        return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+        return dateObj.toLocaleDateString([], { month: 'short', day: 'numeric' });
     };
 
     const handleNewChat = () => {
@@ -114,8 +118,8 @@ export function ConversationsSidebar({
                 <div className="flex items-center justify-between mb-4">
                     <div>
                         <h1 className="text-2xl font-bold text-gray-900">Messages</h1>
-                        {userHandle && (
-                            <p className="text-sm text-gray-500">{userHandle}</p>
+                        {userDisplayName && (
+                            <p className="text-sm text-gray-500">{userDisplayName}</p>
                         )}
                     </div>
                     <div className="flex items-center gap-2">

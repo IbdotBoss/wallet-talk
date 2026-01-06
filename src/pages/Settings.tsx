@@ -1,25 +1,29 @@
 /**
  * Settings Page - Premium fintech-style settings
  * 
- * White theme with modern card design
+ * White theme with modern card design.
+ * Integrated with identityStore for editable display name.
  */
 
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
-import { getHandleForAddress } from '@/lib/UsernameGenerator';
 import { truncateAddress } from '@/lib/SecurityService';
 import { getBlockedAddresses, removeFromBlocklist, clearBlocklist } from '@/lib/BlocklistService';
 import { triggerHaptic, hapticSuccess, hapticError } from '@/lib/haptics';
 import { clearAllLimits } from '@/lib/RateLimiter';
 import { useMessageStore } from '@/store/messageStore';
+import { useIdentityStore } from '@/store/identityStore';
+import { generateShuffleHandle } from '@/lib/UsernameGenerator';
+import { LiquidGlassAvatar } from '@/components/ui/LiquidGlassAvatar';
 
 export function Settings() {
     const navigate = useNavigate();
     const { logout, user, exportWallet } = usePrivy();
     const { wallets } = useWallets();
     const { clearAll: clearMessages } = useMessageStore();
+    const { identity, updateDisplayName } = useIdentityStore();
 
     const [showExportConfirm, setShowExportConfirm] = useState(false);
     const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -27,11 +31,15 @@ export function Settings() {
     const [blockedAddresses, setBlockedAddresses] = useState(getBlockedAddresses());
     const [copiedAddress, setCopiedAddress] = useState(false);
 
+    // Editing state for display name
+    const [isEditingName, setIsEditingName] = useState(false);
+    const [editedName, setEditedName] = useState(identity?.displayName || '');
+
     const embeddedWallet = wallets?.find((w) => w.walletClientType === 'privy');
     const externalWallet = wallets?.find((w) => w.walletClientType !== 'privy');
-    const userHandle = user?.wallet?.address
-        ? getHandleForAddress(user.wallet.address)
-        : null;
+
+    // Use identity store for display name, fallback to truncated address
+    const displayName = identity?.displayName || (user?.wallet?.address ? truncateAddress(user.wallet.address) : 'Loading...');
 
     const handleBack = () => {
         triggerHaptic('light');
@@ -77,6 +85,7 @@ export function Settings() {
         clearBlocklist();
         clearAllLimits();
         localStorage.removeItem('antigravity_handles');
+        localStorage.removeItem('antigravity-identity');
         hapticSuccess();
         setShowClearConfirm(false);
     };
@@ -85,6 +94,31 @@ export function Settings() {
         triggerHaptic('medium');
         await logout();
         navigate('/');
+    };
+
+    const handleEditName = () => {
+        setEditedName(identity?.displayName || '');
+        setIsEditingName(true);
+        triggerHaptic('light');
+    };
+
+    const handleSaveName = () => {
+        if (editedName.trim().length >= 2) {
+            updateDisplayName(editedName.trim());
+            hapticSuccess();
+        }
+        setIsEditingName(false);
+    };
+
+    const handleCancelEdit = () => {
+        setEditedName(identity?.displayName || '');
+        setIsEditingName(false);
+    };
+
+    const handleShuffleName = () => {
+        triggerHaptic('light');
+        const newName = generateShuffleHandle(false);
+        setEditedName(newName);
     };
 
     return (
@@ -120,36 +154,110 @@ export function Settings() {
                 >
                     <div className="p-6">
                         <div className="flex items-center gap-4">
-                            {/* Avatar with gradient */}
+                            {/* Liquid Glass Avatar */}
                             <div className="relative">
-                                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-violet-500 via-purple-500 to-fuchsia-500 flex items-center justify-center shadow-lg">
-                                    <span className="text-white text-3xl font-bold">
-                                        {userHandle ? userHandle[1]?.toUpperCase() : '?'}
-                                    </span>
-                                </div>
+                                {user?.wallet?.address ? (
+                                    <LiquidGlassAvatar
+                                        address={user.wallet.address}
+                                        displayName={identity?.displayName}
+                                        size="xl"
+                                        animate={false}
+                                    />
+                                ) : (
+                                    <div className="w-16 h-16 rounded-2xl bg-gray-200 flex items-center justify-center">
+                                        <span className="text-gray-400 text-2xl">?</span>
+                                    </div>
+                                )}
                                 {/* Online indicator */}
-                                <div className="absolute bottom-1 right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white" />
+                                <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-green-500 rounded-full border-2 border-white" />
                             </div>
 
                             <div className="flex-1 min-w-0">
-                                <h2 className="text-xl font-bold text-gray-900">{userHandle || 'Loading...'}</h2>
-                                <button
-                                    onClick={handleCopyAddress}
-                                    className="flex items-center gap-1.5 text-gray-500 text-sm mt-1 hover:text-gray-700 transition-colors"
-                                >
-                                    <span className="font-mono">
-                                        {user?.wallet?.address ? truncateAddress(user.wallet.address) : ''}
-                                    </span>
-                                    {copiedAddress ? (
-                                        <svg className="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                        </svg>
+                                {/* Editable Display Name */}
+                                <AnimatePresence mode="wait">
+                                    {isEditingName ? (
+                                        <motion.div
+                                            key="editing"
+                                            initial={{ opacity: 0 }}
+                                            animate={{ opacity: 1 }}
+                                            exit={{ opacity: 0 }}
+                                            className="space-y-2"
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <input
+                                                    type="text"
+                                                    value={editedName}
+                                                    onChange={(e) => setEditedName(e.target.value.slice(0, 24))}
+                                                    className="flex-1 px-3 py-2 bg-gray-100 border-0 rounded-lg text-gray-900 font-medium focus:ring-2 focus:ring-black focus:bg-white transition-all"
+                                                    placeholder="Display name..."
+                                                    autoFocus
+                                                    maxLength={24}
+                                                />
+                                                <button
+                                                    onClick={handleShuffleName}
+                                                    className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors"
+                                                    title="Shuffle name"
+                                                >
+                                                    <svg className="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                                                    </svg>
+                                                </button>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    onClick={handleSaveName}
+                                                    disabled={editedName.trim().length < 2}
+                                                    className="px-3 py-1.5 text-sm font-medium text-white bg-black hover:bg-gray-800 disabled:bg-gray-300 rounded-lg transition-colors"
+                                                >
+                                                    Save
+                                                </button>
+                                                <button
+                                                    onClick={handleCancelEdit}
+                                                    className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                                                >
+                                                    Cancel
+                                                </button>
+                                            </div>
+                                        </motion.div>
                                     ) : (
-                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                        </svg>
+                                        <motion.div
+                                            key="display"
+                                            initial={{ opacity: 0 }}
+                                            animate={{ opacity: 1 }}
+                                            exit={{ opacity: 0 }}
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <h2 className="text-xl font-bold text-gray-900">{displayName}</h2>
+                                                <button
+                                                    onClick={handleEditName}
+                                                    className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+                                                    title="Edit name"
+                                                >
+                                                    <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                                    </svg>
+                                                </button>
+                                            </div>
+                                            <button
+                                                onClick={handleCopyAddress}
+                                                className="flex items-center gap-1.5 text-gray-500 text-sm mt-1 hover:text-gray-700 transition-colors"
+                                            >
+                                                <span className="font-mono">
+                                                    {user?.wallet?.address ? truncateAddress(user.wallet.address) : ''}
+                                                </span>
+                                                {copiedAddress ? (
+                                                    <svg className="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                                    </svg>
+                                                ) : (
+                                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                                    </svg>
+                                                )}
+                                            </button>
+                                        </motion.div>
                                     )}
-                                </button>
+                                </AnimatePresence>
                             </div>
                         </div>
 
@@ -158,7 +266,7 @@ export function Settings() {
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
                             <p className="text-xs text-gray-500">
-                                Your username is a local alias only and is not stored on-chain or shared with other users.
+                                Your display name is stored locally. Tap the pencil icon to change it anytime.
                             </p>
                         </div>
                     </div>
@@ -232,18 +340,15 @@ export function Settings() {
                             {blockedAddresses.map((address) => (
                                 <div key={address} className="px-6 py-4 flex items-center justify-between">
                                     <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center">
-                                            <span className="text-gray-500 font-medium">
-                                                {(getHandleForAddress(address)?.[1] || address[2] || '?').toUpperCase()}
-                                            </span>
-                                        </div>
+                                        <LiquidGlassAvatar
+                                            address={address}
+                                            size="md"
+                                            animate={false}
+                                        />
                                         <div>
                                             <p className="font-medium text-gray-900">
-                                                {getHandleForAddress(address) || truncateAddress(address)}
+                                                {truncateAddress(address)}
                                             </p>
-                                            {getHandleForAddress(address) && (
-                                                <p className="text-sm text-gray-500 font-mono">{truncateAddress(address)}</p>
-                                            )}
                                         </div>
                                     </div>
                                     <button
@@ -258,7 +363,7 @@ export function Settings() {
                     </motion.div>
                 )}
 
-                {/* Data Management */}
+                {/* Privacy & Security */}
                 <motion.div
                     className="bg-white rounded-2xl shadow-sm overflow-hidden"
                     initial={{ opacity: 0, y: 20 }}
@@ -266,111 +371,105 @@ export function Settings() {
                     transition={{ delay: 0.25 }}
                 >
                     <div className="px-6 py-4 border-b border-gray-100">
-                        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Data</h3>
+                        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Privacy & Security</h3>
                     </div>
 
-                    <div className="px-6 py-4">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
-                                    <svg className="w-5 h-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                    </svg>
-                                </div>
-                                <div>
-                                    <p className="font-medium text-gray-900">Clear All Data</p>
-                                    <p className="text-sm text-gray-500">Messages, usernames, and blocklist</p>
-                                </div>
+                    <div className="divide-y divide-gray-100">
+                        <div className="px-6 py-4 flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-500 to-emerald-400 flex items-center justify-center">
+                                <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                                </svg>
                             </div>
-                            <button
-                                onClick={() => setShowClearConfirm(true)}
-                                className="px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-xl transition-colors"
-                            >
-                                Clear
-                            </button>
+                            <div className="flex-1">
+                                <p className="font-medium text-gray-900">End-to-End Encryption</p>
+                                <p className="text-sm text-gray-500">All messages are encrypted with XMTP</p>
+                            </div>
+                            <div className="px-2 py-1 bg-green-100 rounded-full">
+                                <span className="text-xs font-medium text-green-700">Active</span>
+                            </div>
                         </div>
+
+                        <button
+                            onClick={() => setShowClearConfirm(true)}
+                            className="w-full px-6 py-4 flex items-center gap-3 hover:bg-gray-50 transition-colors text-left"
+                        >
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-red-500 to-rose-400 flex items-center justify-center">
+                                <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                            </div>
+                            <div>
+                                <p className="font-medium text-red-600">Clear All Data</p>
+                                <p className="text-sm text-gray-500">Messages, blocked users, identity</p>
+                            </div>
+                        </button>
                     </div>
                 </motion.div>
 
-                {/* Sign Out Button */}
-                <motion.button
-                    onClick={handleLogout}
-                    className="w-full py-4 bg-white rounded-2xl shadow-sm text-red-500 font-semibold text-center hover:bg-red-50 transition-colors"
+                {/* Logout */}
+                <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.3 }}
-                    whileTap={{ scale: 0.98 }}
                 >
-                    Sign Out
-                </motion.button>
+                    <button
+                        onClick={handleLogout}
+                        className="w-full py-4 text-center text-red-600 font-semibold bg-white rounded-2xl shadow-sm hover:bg-red-50 transition-colors"
+                    >
+                        Sign Out
+                    </button>
+                </motion.div>
 
-                {/* Version */}
-                <motion.p
-                    className="text-gray-400 text-xs text-center pt-4 pb-8"
+                {/* Footer */}
+                <motion.div
+                    className="text-center py-6"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: 0.35 }}
                 >
-                    Antigravity v0.1.0 • XMTP Powered
-                </motion.p>
+                    <p className="text-gray-400 text-xs">Wallet Talk v1.0</p>
+                    <p className="text-gray-400 text-xs mt-1">Powered by XMTP • End-to-end encrypted</p>
+                </motion.div>
             </div>
 
-            {/* Export Wallet Modal */}
+            {/* Export Wallet Confirmation Modal */}
             <AnimatePresence>
                 {showExportConfirm && (
                     <motion.div
-                        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        onClick={() => setShowExportConfirm(false)}
                     >
                         <motion.div
-                            className="w-full max-w-md bg-white rounded-2xl p-6 shadow-2xl"
-                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                            onClick={(e) => e.stopPropagation()}
+                            className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl"
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
                         >
-                            <div className="text-center mb-6">
-                                <div className="w-16 h-16 rounded-full bg-yellow-100 flex items-center justify-center mx-auto mb-4">
-                                    <svg className="w-8 h-8 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                    </svg>
-                                </div>
-                                <h3 className="text-xl font-bold text-gray-900 mb-2">Export Private Key</h3>
-                                <p className="text-gray-500 text-sm">
-                                    You will need to re-authenticate. Never share your private key with anyone.
-                                </p>
+                            <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-4">
+                                <svg className="w-6 h-6 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                </svg>
                             </div>
-
-                            <div className="space-y-3">
+                            <h3 className="text-lg font-bold text-gray-900 text-center mb-2">Export Wallet</h3>
+                            <p className="text-gray-500 text-sm text-center mb-6">
+                                This will reveal your private key. Never share it with anyone.
+                            </p>
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => setShowExportConfirm(false)}
+                                    className="flex-1 py-3 rounded-xl font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors"
+                                >
+                                    Cancel
+                                </button>
                                 <button
                                     onClick={handleExportWallet}
                                     disabled={isExporting}
-                                    className="w-full py-4 rounded-xl bg-black text-white font-semibold flex items-center justify-center gap-2 hover:bg-gray-800 disabled:opacity-50 transition-colors"
+                                    className="flex-1 py-3 rounded-xl font-medium text-white bg-amber-500 hover:bg-amber-600 disabled:opacity-50 transition-colors"
                                 >
-                                    {isExporting ? (
-                                        <motion.div
-                                            className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full"
-                                            animate={{ rotate: 360 }}
-                                            transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-                                        />
-                                    ) : (
-                                        <>
-                                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4" />
-                                            </svg>
-                                            Authenticate & Export
-                                        </>
-                                    )}
-                                </button>
-                                <button
-                                    onClick={() => setShowExportConfirm(false)}
-                                    className="w-full py-4 rounded-xl border border-gray-200 text-gray-700 font-semibold hover:bg-gray-50 transition-colors"
-                                >
-                                    Cancel
+                                    {isExporting ? 'Exporting...' : 'Export'}
                                 </button>
                             </div>
                         </motion.div>
@@ -378,48 +477,42 @@ export function Settings() {
                 )}
             </AnimatePresence>
 
-            {/* Clear Data Modal */}
+            {/* Clear Data Confirmation Modal */}
             <AnimatePresence>
                 {showClearConfirm && (
                     <motion.div
-                        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        onClick={() => setShowClearConfirm(false)}
                     >
                         <motion.div
-                            className="w-full max-w-md bg-white rounded-2xl p-6 shadow-2xl"
-                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                            onClick={(e) => e.stopPropagation()}
+                            className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl"
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
                         >
-                            <div className="text-center mb-6">
-                                <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
-                                    <svg className="w-8 h-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                    </svg>
-                                </div>
-                                <h3 className="text-xl font-bold text-gray-900 mb-2">Clear All Data</h3>
-                                <p className="text-gray-500 text-sm">
-                                    This will delete your local message cache, username mappings, and blocklist. This cannot be undone.
-                                </p>
+                            <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
+                                <svg className="w-6 h-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
                             </div>
-
-                            <div className="space-y-3">
-                                <button
-                                    onClick={handleClearData}
-                                    className="w-full py-4 rounded-xl bg-red-500 text-white font-semibold hover:bg-red-600 transition-colors"
-                                >
-                                    Clear Data
-                                </button>
+                            <h3 className="text-lg font-bold text-gray-900 text-center mb-2">Clear All Data?</h3>
+                            <p className="text-gray-500 text-sm text-center mb-6">
+                                This will delete all messages, blocked users, and your identity. This cannot be undone.
+                            </p>
+                            <div className="flex gap-3">
                                 <button
                                     onClick={() => setShowClearConfirm(false)}
-                                    className="w-full py-4 rounded-xl border border-gray-200 text-gray-700 font-semibold hover:bg-gray-50 transition-colors"
+                                    className="flex-1 py-3 rounded-xl font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors"
                                 >
                                     Cancel
+                                </button>
+                                <button
+                                    onClick={handleClearData}
+                                    className="flex-1 py-3 rounded-xl font-medium text-white bg-red-500 hover:bg-red-600 transition-colors"
+                                >
+                                    Clear All
                                 </button>
                             </div>
                         </motion.div>

@@ -24,6 +24,20 @@ const NOUNS = [
     'Blade', 'Storm', 'Frost', 'Flame', 'Shadow', 'Light', 'Star', 'Moon',
 ];
 
+// Playful word lists for shuffle handles (more fun, less techy)
+const PLAYFUL_ADJECTIVES = [
+    'Neon', 'Cosmic', 'Funky', 'Lucky', 'Happy', 'Chill', 'Wild', 'Cool',
+    'Sunny', 'Starry', 'Dreamy', 'Groovy', 'Jazzy', 'Peppy', 'Snazzy', 'Zesty',
+    'Fizzy', 'Zippy', 'Breezy', 'Misty', 'Velvet', 'Candy', 'Pixel', 'Retro',
+];
+
+const PLAYFUL_NOUNS = [
+    'Void', 'City', 'Wave', 'Moon', 'Star', 'Cloud', 'Dream', 'Vibe',
+    'Glow', 'Spark', 'Flash', 'Dash', 'Breeze', 'Storm', 'Comet', 'Orbit',
+    'Pixel', 'Disco', 'Blaze', 'Echo', 'Pulse', 'Drift', 'Frost', 'Bloom',
+];
+
+
 // LocalStorage key for handle → address mapping
 const HANDLE_STORAGE_KEY = 'antigravity_handles';
 
@@ -141,5 +155,51 @@ export function clearHandleMappings(): void {
         localStorage.removeItem(HANDLE_STORAGE_KEY);
     } catch {
         // Silent fail
+    }
+}
+
+/**
+ * Generates a playful shuffle handle (user-friendly format)
+ * Pattern: Adjective-Noun or Adjective-Noun-Number
+ * Examples: "Neon-Void", "Cosmic-City", "Funky-Wave-42"
+ */
+export function generateShuffleHandle(includeNumber: boolean = true): string {
+    const adjective = PLAYFUL_ADJECTIVES[secureRandomInt(0, PLAYFUL_ADJECTIVES.length)];
+    const noun = PLAYFUL_NOUNS[secureRandomInt(0, PLAYFUL_NOUNS.length)];
+
+    if (includeNumber) {
+        const number = secureRandomInt(10, 100);
+        return `${adjective}-${noun}-${number}`;
+    }
+
+    return `${adjective}-${noun}`;
+}
+
+/**
+ * Updates the display name for an address
+ * This is the user-chosen name, not the @handle
+ */
+export function updateDisplayName(address: string, displayName: string): void {
+    if (!address) return;
+
+    const key = `antigravity_displayname_${address.toLowerCase()}`;
+    try {
+        localStorage.setItem(key, displayName);
+    } catch (error) {
+        logSecurityEvent('Failed to save display name', { error });
+    }
+}
+
+/**
+ * Gets the display name for an address
+ */
+export function getDisplayName(address: string): string | null {
+    if (!address) return null;
+
+    const key = `antigravity_displayname_${address.toLowerCase()}`;
+    try {
+        return localStorage.getItem(key);
+    } catch {
+        return null;
     }
 }

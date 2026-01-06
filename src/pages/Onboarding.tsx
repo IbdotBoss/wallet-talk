@@ -4,48 +4,46 @@
  * Clean Apple-style aesthetics with smooth animations.
  * White theme with physics-based cursor attractor background.
  * No social logins - Passkeys/Wallets only.
+ * 
+ * Flow: Login → Identity Setup → Messages
  */
 
 import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePrivy } from '@privy-io/react-auth';
-import { triggerHaptic, hapticSuccess } from '@/lib/haptics';
-import { registerHandle, getHandleForAddress } from '@/lib/UsernameGenerator';
-import { identityRateLimiter } from '@/lib/RateLimiter';
+import { triggerHaptic } from '@/lib/haptics';
 import { ShimmerButtonSimple } from '@/components/ui/shimmer-button-simple';
 import { CursorBorderButton } from '@/components/ui/cursor-border-button';
 import TextCursorProximity from '@/components/ui/text-cursor-proximity';
 import { EncryptedText } from '@/components/ui/encrypted-text';
 import Gravity, { MatterBody } from '@/components/fancy/physics/cursor-attractor-and-gravity';
+import { IdentitySetup } from '@/components/onboarding/IdentitySetup';
+import { useIdentityStore } from '@/store/identityStore';
 import LogoImage from '@/assets/wallet-talk-logo.png';
+
+type OnboardingStep = 'login' | 'identity';
 
 export function Onboarding() {
     const navigate = useNavigate();
     const { login, authenticated, user } = usePrivy();
-    const [showHandle, setShowHandle] = useState(false);
-    const [generatedHandle, setGeneratedHandle] = useState<string | null>(null);
+    const { identity } = useIdentityStore();
+    const [step, setStep] = useState<OnboardingStep>('login');
     const [isCreating, setIsCreating] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
 
-    // Redirect if already authenticated
+    // Check if user is already set up
     useEffect(() => {
         if (authenticated && user?.wallet?.address) {
-            const existingHandle = getHandleForAddress(user.wallet.address);
-            if (existingHandle) {
+            // If user has an identity, go to messages
+            if (identity && identity.walletAddress.toLowerCase() === user.wallet.address.toLowerCase()) {
                 navigate('/messages');
             } else {
-                // Generate handle for new user
-                if (identityRateLimiter.check(user.id)) {
-                    const handle = registerHandle(user.wallet.address);
-                    identityRateLimiter.attempt(user.id);
-                    setGeneratedHandle(handle);
-                    setShowHandle(true);
-                    hapticSuccess();
-                }
+                // Show identity setup for new users
+                setStep('identity');
             }
         }
-    }, [authenticated, user, navigate]);
+    }, [authenticated, user, identity, navigate]);
 
     const handleCreateIdentity = async () => {
         triggerHaptic('medium');
@@ -66,7 +64,7 @@ export function Onboarding() {
         }
     };
 
-    const handleContinue = () => {
+    const handleIdentityComplete = () => {
         triggerHaptic('medium');
         navigate('/messages');
     };
@@ -105,7 +103,7 @@ export function Onboarding() {
             </Gravity>
 
             <AnimatePresence mode="wait">
-                {!showHandle ? (
+                {step === 'login' ? (
                     <motion.div
                         key="login"
                         initial={{ opacity: 0, y: 20 }}
@@ -229,62 +227,18 @@ export function Onboarding() {
                     </motion.div>
                 ) : (
                     <motion.div
-                        key="handle"
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-                        className="relative z-10 w-full max-w-sm flex flex-col items-center"
+                        key="identity"
+                        className="relative z-10"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
                     >
-                        {/* Success animation */}
-                        <motion.div
-                            className="w-24 h-24 rounded-full flex items-center justify-center mb-8"
-                            style={{
-                                background: 'linear-gradient(135deg, #34C759 0%, #30D158 100%)',
-                                boxShadow: '0 0 40px rgba(52, 199, 89, 0.3)',
-                            }}
-                            initial={{ scale: 0 }}
-                            animate={{ scale: 1 }}
-                            transition={{ type: 'spring', stiffness: 200, damping: 12 }}
-                        >
-                            <motion.svg
-                                className="w-12 h-12 text-white"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                                initial={{ pathLength: 0 }}
-                                animate={{ pathLength: 1 }}
-                                transition={{ delay: 0.3, duration: 0.5 }}
-                            >
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                            </motion.svg>
-                        </motion.div>
-
-                        <h2 className="text-2xl font-bold text-gray-900 mb-2">Welcome!</h2>
-                        <p className="text-gray-500 text-center mb-6">Your identity has been created.</p>
-
-                        {/* Handle display */}
-                        <motion.div
-                            className="glass-card px-8 py-6 mb-8 text-center"
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: 0.2 }}
-                        >
-                            <p className="text-gray-500 text-sm mb-2">Your Handle</p>
-                            <p className="text-3xl font-bold text-[#007AFF]">{generatedHandle}</p>
-                            <p className="text-gray-500 text-xs mt-3 flex items-center justify-center gap-1">
-                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                                Local alias only
-                            </p>
-                        </motion.div>
-
-                        <ShimmerButtonSimple
-                            onClick={handleContinue}
-                            className="w-full max-w-xs"
-                        >
-                            Start Chatting
-                        </ShimmerButtonSimple>
+                        {user?.wallet?.address && (
+                            <IdentitySetup
+                                walletAddress={user.wallet.address}
+                                onComplete={handleIdentityComplete}
+                            />
+                        )}
                     </motion.div>
                 )}
             </AnimatePresence>
