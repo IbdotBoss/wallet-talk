@@ -49,7 +49,7 @@ const AnimatedLetter = ({
 
     // Build additional transforms from styles prop
     const additionalStyles = useMemo(() => {
-        const result: Record<string, ReturnType<typeof useTransform>> = {};
+        const result: Record<string, any> = {};
         Object.entries(styles).forEach(([key, value]) => {
             if (value && key !== 'filter' && key !== 'opacity') {
                 result[key] = useTransform(proximity, [0, 1], [value.from, value.to]);

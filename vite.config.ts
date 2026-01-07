@@ -79,7 +79,10 @@ export default defineConfig({
         global: 'globalThis',
     },
     optimizeDeps: {
-        include: ['@xmtp/browser-sdk'],
+        // XMTP packages use WASM bindings and import.meta.url - must be excluded
+        exclude: ['@xmtp/wasm-bindings', '@xmtp/browser-sdk'],
+        // protobufjs is CommonJS and needs to be pre-bundled for ESM compatibility
+        include: ['protobufjs/minimal', 'buffer'],
         esbuildOptions: {
             target: 'esnext',
         },

@@ -198,7 +198,7 @@ const Gravity = forwardRef<GravityRef, GravityProps>(
           })
         } else {
           body = Bodies.rectangle(x, y, width, height, {
-            ...props.matterBodyOptions,
+            ...(props.matterBodyOptions as any),
             angle: angle,
             render: {
               fillStyle: debug ? "#888888" : "#00000000",

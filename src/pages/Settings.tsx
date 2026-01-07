@@ -14,8 +14,9 @@ import { getBlockedAddresses, removeFromBlocklist, clearBlocklist } from '@/lib/
 import { triggerHaptic, hapticSuccess, hapticError } from '@/lib/haptics';
 import { clearAllLimits } from '@/lib/RateLimiter';
 import { useMessageStore } from '@/store/messageStore';
-import { useIdentityStore } from '@/store/identityStore';
+import { useIdentityStore, createIdentity } from '@/store/identityStore';
 import { generateShuffleHandle } from '@/lib/UsernameGenerator';
+import { AvatarUpload } from '@/components/ui/AvatarUpload';
 import { LiquidGlassAvatar } from '@/components/ui/LiquidGlassAvatar';
 
 export function Settings() {
@@ -23,7 +24,7 @@ export function Settings() {
     const { logout, user, exportWallet } = usePrivy();
     const { wallets } = useWallets();
     const { clearAll: clearMessages } = useMessageStore();
-    const { identity, updateDisplayName } = useIdentityStore();
+    const { identity, updateDisplayName, updateAvatar, setIdentity } = useIdentityStore();
 
     const [showExportConfirm, setShowExportConfirm] = useState(false);
     const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -104,7 +105,13 @@ export function Settings() {
 
     const handleSaveName = () => {
         if (editedName.trim().length >= 2) {
-            updateDisplayName(editedName.trim());
+            // If no identity exists, create one first
+            if (!identity && user?.wallet?.address) {
+                const newIdentity = createIdentity(user.wallet.address, editedName.trim());
+                setIdentity(newIdentity);
+            } else {
+                updateDisplayName(editedName.trim());
+            }
             hapticSuccess();
         }
         setIsEditingName(false);
@@ -154,23 +161,27 @@ export function Settings() {
                 >
                     <div className="p-6">
                         <div className="flex items-center gap-4">
-                            {/* Liquid Glass Avatar */}
-                            <div className="relative">
-                                {user?.wallet?.address ? (
-                                    <LiquidGlassAvatar
-                                        address={user.wallet.address}
-                                        displayName={identity?.displayName}
-                                        size="xl"
-                                        animate={false}
-                                    />
-                                ) : (
-                                    <div className="w-16 h-16 rounded-2xl bg-gray-200 flex items-center justify-center">
-                                        <span className="text-gray-400 text-2xl">?</span>
-                                    </div>
-                                )}
-                                {/* Online indicator */}
-                                <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-green-500 rounded-full border-2 border-white" />
-                            </div>
+                            {/* Uploadable Avatar */}
+                            {user?.wallet?.address && (
+                                <AvatarUpload
+                                    currentAvatarUrl={identity?.avatarUrl || null}
+                                    walletAddress={user.wallet.address}
+                                    displayName={identity?.displayName}
+                                    onUpload={(imageDataUrl) => {
+                                        // If no identity exists, create one first
+                                        if (!identity && user?.wallet?.address) {
+                                            const newIdentity = createIdentity(user.wallet.address, displayName);
+                                            newIdentity.avatarUrl = imageDataUrl;
+                                            newIdentity.avatarType = 'custom';
+                                            setIdentity(newIdentity);
+                                        } else {
+                                            updateAvatar(imageDataUrl, 'custom');
+                                        }
+                                    }}
+                                    onRemove={() => updateAvatar(null, 'generative')}
+                                    size="xl"
+                                />
+                            )}
 
                             <div className="flex-1 min-w-0">
                                 {/* Editable Display Name */}

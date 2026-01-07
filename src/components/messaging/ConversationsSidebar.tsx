@@ -3,24 +3,26 @@
  * 
  * Features:
  * - Messages header with compose button
+ * - Filter chips (All / DMs / Groups)
  * - Search bar
  * - Pinned conversations section
- * - All messages section
+ * - All messages section with group support
  */
 
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { usePrivy } from '@privy-io/react-auth';
-import { useMessageStore } from '@/store/messageStore';
+import { useMessageStore, type Conversation } from '@/store/messageStore';
 import { useIdentityStore } from '@/store/identityStore';
 import { useSecureXMTP } from '@/hooks/useSecureXMTP';
 import { getHandleForAddress } from '@/lib/UsernameGenerator';
 import { truncateAddress, validateAddress } from '@/lib/SecurityService';
 import { triggerHaptic, hapticSuccess, hapticError } from '@/lib/haptics';
+import { LiquidGlassAvatar } from '@/components/ui/LiquidGlassAvatar';
+import { CreateGroupModal } from '@/components/messaging/CreateGroupModal';
 
 interface ConversationsSidebarProps {
-    onSelectConversation: (address: string) => void;
+    onSelectConversation: (addressOrTopic: string, type?: 'dm' | 'group') => void;
     selectedAddress?: string;
 }
 
@@ -29,13 +31,13 @@ export function ConversationsSidebar({
     selectedAddress
 }: ConversationsSidebarProps) {
     const navigate = useNavigate();
-    const { user } = usePrivy();
-    const { conversations, isLoading } = useMessageStore();
+    const { conversations, isLoading, activeFilter, setFilter, getFilteredConversations } = useMessageStore();
     const { identity } = useIdentityStore();
     const { isConnected, isConnecting, startConversation } = useSecureXMTP();
 
     const [searchQuery, setSearchQuery] = useState('');
     const [showNewChat, setShowNewChat] = useState(false);
+    const [showNewGroup, setShowNewGroup] = useState(false);
     const [newAddress, setNewAddress] = useState('');
     const [isStarting, setIsStarting] = useState(false);
     const [inputError, setInputError] = useState<string | null>(null);
@@ -46,21 +48,42 @@ export function ConversationsSidebar({
     // Use identity store for display name
     const userDisplayName = identity?.displayName || null;
 
-    // Filter conversations by search
-    const filteredConversations = (conversations || []).filter(conv => {
-        // Skip invalid conversations
-        if (!conv || !conv.peerAddress) return false;
+    // Get filtered conversations based on active filter
+    const baseFilteredConversations = getFilteredConversations();
+
+    // Apply search filter
+    const filteredConversations = baseFilteredConversations.filter(conv => {
+        if (!conv) return false;
         if (!searchQuery) return true;
-        const handle = getHandleForAddress(conv.peerAddress) || '';
-        return (
-            conv.peerAddress.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            handle.toLowerCase().includes(searchQuery.toLowerCase())
-        );
+
+        // For DMs, search by peer address or handle
+        if (conv.type === 'dm') {
+            const handle = getHandleForAddress(conv.peerAddress) || '';
+            return (
+                conv.peerAddress.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                handle.toLowerCase().includes(searchQuery.toLowerCase())
+            );
+        }
+
+        // For groups, search by group name
+        if (conv.type === 'group') {
+            return conv.groupName?.toLowerCase().includes(searchQuery.toLowerCase());
+        }
+
+        return false;
     });
 
-    // Separate pinned and regular
-    const pinnedConversations = filteredConversations.filter(c => c && pinnedAddresses.has(c.peerAddress));
-    const regularConversations = filteredConversations.filter(c => c && !pinnedAddresses.has(c.peerAddress));
+    // Separate pinned and regular (only DMs can be pinned currently)
+    const pinnedConversations = filteredConversations.filter(
+        c => c && c.type === 'dm' && pinnedAddresses.has(c.peerAddress)
+    );
+    const regularConversations = filteredConversations.filter(
+        c => c && !(c.type === 'dm' && pinnedAddresses.has(c.peerAddress))
+    );
+
+    // Counts for filter chips
+    const dmCount = conversations.filter(c => c.type === 'dm').length;
+    const groupCount = conversations.filter(c => c.type === 'group').length;
 
     const formatTime = (date?: Date | string) => {
         if (!date) return '';
@@ -85,6 +108,11 @@ export function ConversationsSidebar({
         setInputError(null);
     };
 
+    const handleNewGroup = () => {
+        triggerHaptic('medium');
+        setShowNewGroup(true);
+    };
+
     const handleStartConversation = async () => {
         if (!validateAddress(newAddress)) {
             setInputError('Please enter a valid Ethereum address');
@@ -98,7 +126,7 @@ export function ConversationsSidebar({
             if (conversation) {
                 hapticSuccess();
                 setShowNewChat(false);
-                onSelectConversation(newAddress);
+                onSelectConversation(newAddress, 'dm');
             } else {
                 setInputError('Failed to start conversation');
                 hapticError();
@@ -109,6 +137,15 @@ export function ConversationsSidebar({
         } finally {
             setIsStarting(false);
         }
+    };
+
+    const handleGroupCreated = (groupId: string) => {
+        onSelectConversation(groupId, 'group');
+    };
+
+    const handleFilterChange = (filter: 'all' | 'dms' | 'groups') => {
+        triggerHaptic('light');
+        setFilter(filter);
     };
 
     return (
@@ -134,6 +171,17 @@ export function ConversationsSidebar({
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                             </svg>
                         </button>
+                        {/* New Group button */}
+                        <button
+                            onClick={handleNewGroup}
+                            disabled={!isConnected}
+                            className="w-10 h-10 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors disabled:opacity-50"
+                            aria-label="New group"
+                        >
+                            <svg className="w-5 h-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                            </svg>
+                        </button>
                         {/* Compose button */}
                         <button
                             onClick={handleNewChat}
@@ -146,6 +194,28 @@ export function ConversationsSidebar({
                             </svg>
                         </button>
                     </div>
+                </div>
+
+                {/* Filter Chips */}
+                <div className="flex gap-2 mb-3">
+                    <FilterChip
+                        label="All"
+                        count={conversations.length}
+                        isActive={activeFilter === 'all'}
+                        onClick={() => handleFilterChange('all')}
+                    />
+                    <FilterChip
+                        label="DMs"
+                        count={dmCount}
+                        isActive={activeFilter === 'dms'}
+                        onClick={() => handleFilterChange('dms')}
+                    />
+                    <FilterChip
+                        label="Groups"
+                        count={groupCount}
+                        isActive={activeFilter === 'groups'}
+                        onClick={() => handleFilterChange('groups')}
+                    />
                 </div>
 
                 {/* Search Bar */}
@@ -167,7 +237,7 @@ export function ConversationsSidebar({
                     <div className="mt-3 flex items-center gap-2 text-sm">
                         <div className={`w-2 h-2 rounded-full ${isConnecting ? 'bg-yellow-400 animate-pulse' : 'bg-gray-400'}`} />
                         <span className="text-gray-500">
-                            {isConnecting ? 'Connecting...' : 'Offline'}
+                            {isConnecting ? 'Connecting to XMTP...' : 'Offline'}
                         </span>
                     </div>
                 )}
@@ -184,12 +254,22 @@ export function ConversationsSidebar({
                 ) : filteredConversations.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full p-8 text-center">
                         <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
-                            <svg className="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                            </svg>
+                            {activeFilter === 'groups' ? (
+                                <svg className="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                                </svg>
+                            ) : (
+                                <svg className="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                </svg>
+                            )}
                         </div>
-                        <p className="text-gray-900 font-medium mb-1">No conversations</p>
-                        <p className="text-gray-500 text-sm">Start a new chat to begin</p>
+                        <p className="text-gray-900 font-medium mb-1">
+                            {activeFilter === 'groups' ? 'No groups yet' : activeFilter === 'dms' ? 'No direct messages' : 'No conversations'}
+                        </p>
+                        <p className="text-gray-500 text-sm">
+                            {activeFilter === 'groups' ? 'Create a group to get started' : 'Start a new chat to begin'}
+                        </p>
                     </div>
                 ) : (
                     <>
@@ -204,9 +284,12 @@ export function ConversationsSidebar({
                                     <ConversationItem
                                         key={conv.topic}
                                         conversation={conv}
-                                        isSelected={selectedAddress === conv.peerAddress}
+                                        isSelected={selectedAddress === conv.peerAddress || selectedAddress === conv.topic}
                                         isPinned={true}
-                                        onSelect={() => onSelectConversation(conv.peerAddress)}
+                                        onSelect={() => onSelectConversation(
+                                            conv.type === 'group' ? conv.topic : conv.peerAddress,
+                                            conv.type
+                                        )}
                                         formatTime={formatTime}
                                     />
                                 ))}
@@ -224,9 +307,12 @@ export function ConversationsSidebar({
                                 <ConversationItem
                                     key={conv.topic}
                                     conversation={conv}
-                                    isSelected={selectedAddress === conv.peerAddress}
+                                    isSelected={selectedAddress === conv.peerAddress || selectedAddress === conv.topic}
                                     isPinned={false}
-                                    onSelect={() => onSelectConversation(conv.peerAddress)}
+                                    onSelect={() => onSelectConversation(
+                                        conv.type === 'group' ? conv.topic : conv.peerAddress,
+                                        conv.type
+                                    )}
                                     formatTime={formatTime}
                                 />
                             ))}
@@ -235,11 +321,10 @@ export function ConversationsSidebar({
                 )}
             </div>
 
-            {/* FAB for new conversation */}
             <motion.button
                 onClick={handleNewChat}
                 disabled={!isConnected}
-                className="absolute bottom-6 right-6 w-14 h-14 rounded-full bg-black shadow-lg flex items-center justify-center disabled:opacity-50"
+                className="fixed md:absolute bottom-6 right-6 w-14 h-14 rounded-full bg-black shadow-lg flex items-center justify-center disabled:opacity-50 z-40 transition-transform active:scale-95 hover:scale-105"
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
                 transition={{ type: 'spring', stiffness: 400, damping: 15, delay: 0.3 }}
@@ -318,19 +403,58 @@ export function ConversationsSidebar({
                     </motion.div>
                 )}
             </AnimatePresence>
+
+            {/* Create Group Modal */}
+            <CreateGroupModal
+                isOpen={showNewGroup}
+                onClose={() => setShowNewGroup(false)}
+                onGroupCreated={handleGroupCreated}
+            />
         </div>
     );
 }
 
-// Conversation Item Component
+// ============================================================================
+// FILTER CHIP COMPONENT
+// ============================================================================
+
+interface FilterChipProps {
+    label: string;
+    count?: number;
+    isActive: boolean;
+    onClick: () => void;
+}
+
+function FilterChip({ label, count, isActive, onClick }: FilterChipProps) {
+    return (
+        <motion.button
+            onClick={onClick}
+            className={`
+                px-3 py-1.5 rounded-full text-sm font-medium transition-all
+                ${isActive
+                    ? 'bg-gray-900 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }
+            `}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+        >
+            {label}
+            {count !== undefined && count > 0 && (
+                <span className={`ml-1.5 ${isActive ? 'text-gray-300' : 'text-gray-400'}`}>
+                    {count}
+                </span>
+            )}
+        </motion.button>
+    );
+}
+
+// ============================================================================
+// CONVERSATION ITEM COMPONENT
+// ============================================================================
+
 interface ConversationItemProps {
-    conversation: {
-        topic: string;
-        peerAddress: string;
-        lastMessage?: string;
-        lastMessageTime?: Date;
-        unreadCount: number;
-    };
+    conversation: Conversation;
     isSelected: boolean;
     isPinned: boolean;
     onSelect: () => void;
@@ -344,12 +468,32 @@ function ConversationItem({
     onSelect,
     formatTime
 }: ConversationItemProps) {
-    // Guard clause - return null if conversation is invalid
-    if (!conversation || !conversation.peerAddress) {
-        return null;
-    }
+    const { identity } = useIdentityStore();
 
-    const peerHandle = getHandleForAddress(conversation.peerAddress);
+    // Handle both DM and Group conversations
+    const isGroup = conversation.type === 'group';
+
+    // For DMs
+    const peerHandle = !isGroup ? getHandleForAddress(conversation.peerAddress) : null;
+    const isMe = !isGroup && identity && conversation.peerAddress.toLowerCase() === identity.walletAddress.toLowerCase();
+
+    // Display name logic
+    let displayName: string;
+    let avatarUrl: string | undefined;
+    let avatarAddress: string;
+
+    if (isGroup) {
+        displayName = conversation.groupName || 'Unnamed Group';
+        avatarUrl = conversation.groupImageUrl;
+        avatarAddress = conversation.topic; // Use topic for consistent avatar generation
+    } else if (isMe) {
+        displayName = identity!.displayName;
+        avatarUrl = identity!.avatarUrl ?? undefined;
+        avatarAddress = conversation.peerAddress;
+    } else {
+        displayName = peerHandle || truncateAddress(conversation.peerAddress);
+        avatarAddress = conversation.peerAddress;
+    }
 
     return (
         <button
@@ -360,17 +504,30 @@ function ConversationItem({
                 }`}
         >
             {/* Avatar */}
-            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center flex-shrink-0">
-                <span className="text-white font-semibold">
-                    {peerHandle ? peerHandle[1]?.toUpperCase() : (conversation.peerAddress?.[2] || '?').toUpperCase()}
-                </span>
+            <div className="relative">
+                <LiquidGlassAvatar
+                    address={avatarAddress}
+                    displayName={displayName}
+                    avatarUrl={avatarUrl}
+                    size="lg"
+                    animate={false}
+                    showInitial={true}
+                />
+                {/* Group indicator badge */}
+                {isGroup && (
+                    <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 bg-black rounded-full flex items-center justify-center border-2 border-white">
+                        <svg className="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z" />
+                        </svg>
+                    </div>
+                )}
             </div>
 
             {/* Content */}
             <div className="flex-1 min-w-0 text-left">
                 <div className="flex items-center justify-between mb-0.5">
                     <span className="font-semibold text-gray-900 truncate">
-                        {peerHandle || truncateAddress(conversation.peerAddress)}
+                        {displayName}
                     </span>
                     <span className="text-xs text-gray-400 flex-shrink-0 ml-2">
                         {formatTime(conversation.lastMessageTime)}
@@ -378,15 +535,15 @@ function ConversationItem({
                 </div>
                 <div className="flex items-center justify-between">
                     <p className="text-sm text-gray-500 truncate pr-2">
-                        {conversation.lastMessage || 'No messages yet'}
+                        {conversation.lastMessage || (isGroup ? `${conversation.memberCount || 0} members` : 'No messages yet')}
                     </p>
                     {conversation.unreadCount > 0 && (
-                        <span className="w-5 h-5 rounded-full bg-orange-500 text-white text-xs font-semibold flex items-center justify-center flex-shrink-0">
+                        <span className="w-5 h-5 rounded-full bg-black text-white text-xs font-semibold flex items-center justify-center flex-shrink-0">
                             {conversation.unreadCount > 9 ? '9+' : conversation.unreadCount}
                         </span>
                     )}
                     {isPinned && conversation.unreadCount === 0 && (
-                        <svg className="w-4 h-4 text-orange-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <svg className="w-4 h-4 text-gray-900 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                             <path d="M10 2a1 1 0 011 1v1.323l3.954 1.582 1.599-.8a1 1 0 01.894 1.79l-1.233.616 1.738 5.42a1 1 0 01-.285 1.05A3.989 3.989 0 0115 15a3.989 3.989 0 01-2.667-1.019 1 1 0 01-.285-1.05l1.715-5.349L11 6.477V16h2a1 1 0 110 2H7a1 1 0 110-2h2V6.477L6.237 7.582l1.715 5.349a1 1 0 01-.285 1.05A3.989 3.989 0 015 15a3.989 3.989 0 01-2.667-1.019 1 1 0 01-.285-1.05l1.738-5.42-1.233-.617a1 1 0 01.894-1.788l1.599.799L9 4.323V3a1 1 0 011-1z" />
                         </svg>
                     )}

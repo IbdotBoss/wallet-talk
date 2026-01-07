@@ -8,7 +8,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ConversationsSidebar } from '@/components/messaging/ConversationsSidebar';
 import { ChatPanel } from '@/components/messaging/ChatPanel';
@@ -16,7 +16,6 @@ import { EmptyChatState } from '@/components/messaging/EmptyChatState';
 
 export function MessagingLayout() {
     const navigate = useNavigate();
-    const location = useLocation();
     const { address } = useParams<{ address?: string }>();
     const [isMobile, setIsMobile] = useState(false);
 

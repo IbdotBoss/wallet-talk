@@ -11,9 +11,10 @@
 
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LiquidGlassAvatar } from '@/components/ui/LiquidGlassAvatar';
+import { AvatarUpload } from '@/components/ui/AvatarUpload';
 import { generateShuffleHandle } from '@/lib/UsernameGenerator';
 import { useIdentityStore, createIdentity } from '@/store/identityStore';
+import { useSecureXMTP } from '@/hooks/useSecureXMTP';
 import { triggerHaptic, hapticSuccess } from '@/lib/haptics';
 import { ShimmerButtonSimple } from '@/components/ui/shimmer-button-simple';
 
@@ -26,9 +27,12 @@ const MAX_NAME_LENGTH = 24;
 
 export function IdentitySetup({ walletAddress, onComplete }: IdentitySetupProps) {
     const { setIdentity } = useIdentityStore();
+    const { connect, isConnecting, isConnected } = useSecureXMTP();
     const [displayName, setDisplayName] = useState('');
+    const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
     const [isShuffling, setIsShuffling] = useState(false);
     const [hasEdited, setHasEdited] = useState(false);
+    const [isEnablingXMTP, setIsEnablingXMTP] = useState(false);
 
     // Generate initial shuffle handle on mount
     useEffect(() => {
@@ -60,17 +64,37 @@ export function IdentitySetup({ walletAddress, onComplete }: IdentitySetupProps)
         setHasEdited(true);
     };
 
-    const handleContinue = () => {
+    const handleContinue = async () => {
         if (!displayName.trim()) return;
 
         triggerHaptic('medium');
-        hapticSuccess();
+        setIsEnablingXMTP(true);
 
-        // Create and store identity
+        // Create and store identity with optional avatar
         const identity = createIdentity(walletAddress, displayName.trim());
+        if (avatarUrl) {
+            identity.avatarUrl = avatarUrl;
+            identity.avatarType = 'custom';
+        }
         setIdentity(identity);
 
-        onComplete();
+        // Enable XMTP for this wallet by connecting
+        // This will prompt the user to sign the XMTP identity creation message
+        // which registers their wallet on the XMTP network
+        try {
+            if (!isConnected) {
+                await connect();
+            }
+            hapticSuccess();
+            onComplete();
+        } catch (error) {
+            console.error('[IdentitySetup] XMTP enablement error:', error);
+            // Still proceed even if XMTP fails - they can retry later
+            hapticSuccess();
+            onComplete();
+        } finally {
+            setIsEnablingXMTP(false);
+        }
     };
 
     const isValid = displayName.trim().length >= 2;
@@ -101,19 +125,22 @@ export function IdentitySetup({ walletAddress, onComplete }: IdentitySetupProps)
                 Choose how you'll appear to others
             </motion.p>
 
-            {/* Avatar Preview */}
+            {/* Avatar Upload */}
             <motion.div
                 className="mb-8"
                 initial={{ scale: 0.8, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 transition={{ delay: 0.3, type: 'spring', stiffness: 200, damping: 15 }}
             >
-                <LiquidGlassAvatar
-                    address={walletAddress}
+                <AvatarUpload
+                    currentAvatarUrl={avatarUrl}
+                    walletAddress={walletAddress}
                     displayName={displayName}
+                    onUpload={(imageDataUrl) => setAvatarUrl(imageDataUrl)}
+                    onRemove={() => setAvatarUrl(null)}
                     size="2xl"
-                    animate={true}
                 />
+                <p className="text-gray-400 text-xs text-center mt-2">Tap to add a photo</p>
             </motion.div>
 
             {/* Display Name Input */}
@@ -189,10 +216,21 @@ export function IdentitySetup({ walletAddress, onComplete }: IdentitySetupProps)
             >
                 <ShimmerButtonSimple
                     onClick={handleContinue}
-                    disabled={!isValid}
+                    disabled={!isValid || isEnablingXMTP || isConnecting}
                     className="w-full"
                 >
-                    Continue
+                    {isEnablingXMTP || isConnecting ? (
+                        <span className="flex items-center gap-2">
+                            <motion.div
+                                className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full"
+                                animate={{ rotate: 360 }}
+                                transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                            />
+                            Enabling XMTP...
+                        </span>
+                    ) : (
+                        'Continue'
+                    )}
                 </ShimmerButtonSimple>
             </motion.div>
 

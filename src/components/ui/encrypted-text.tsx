@@ -64,7 +64,7 @@ export const EncryptedText: React.FC<EncryptedTextProps> = ({
     const isInView = useInView(ref, { once: !continuous });
 
     const [revealCount, setRevealCount] = useState<number>(0);
-    const [isRevealing, setIsRevealing] = useState<boolean>(true);
+    const [_isRevealing, setIsRevealing] = useState<boolean>(true);
     const animationFrameRef = useRef<number | null>(null);
     const startTimeRef = useRef<number>(0);
     const lastFlipTimeRef = useRef<number>(0);

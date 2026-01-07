@@ -1,3 +1,6 @@
+// Polyfill Buffer for XMTP packages that require it
+import { Buffer } from 'buffer';
+(window as any).Buffer = Buffer;
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';

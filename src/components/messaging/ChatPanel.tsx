@@ -11,12 +11,15 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePrivy } from '@privy-io/react-auth';
 import { useMessageStore } from '@/store/messageStore';
+import { useIdentityStore } from '@/store/identityStore';
 import { useSecureXMTP } from '@/hooks/useSecureXMTP';
 import { getHandleForAddress } from '@/lib/UsernameGenerator';
 import { truncateAddress, validateMessageLength } from '@/lib/SecurityService';
 import { triggerHaptic, hapticSuccess, hapticError } from '@/lib/haptics';
 import { addToBlocklist, isBlocked } from '@/lib/BlocklistService';
 import { messageRateLimiter } from '@/lib/RateLimiter';
+import { LiquidGlassAvatar } from '@/components/ui/LiquidGlassAvatar';
+import { GroupInfoModal } from '@/components/messaging/GroupInfoModal';
 
 interface ChatPanelProps {
     address: string;
@@ -26,22 +29,40 @@ interface ChatPanelProps {
 export function ChatPanel({ address, onBack }: ChatPanelProps) {
     const { user } = usePrivy();
     const { sendMessage, isConnected } = useSecureXMTP();
+    const { identity } = useIdentityStore();
     const { messages, markAsRead, conversations } = useMessageStore();
 
     const [inputValue, setInputValue] = useState('');
     const [isSending, setIsSending] = useState(false);
     const [showActions, setShowActions] = useState(false);
+    const [showGroupInfo, setShowGroupInfo] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
 
-    // Find conversation for this peer
+    // Find conversation by peer address OR topic (for groups)
     const conversation = conversations.find(
-        (c) => c.peerAddress.toLowerCase() === address?.toLowerCase()
+        (c) => c.peerAddress.toLowerCase() === address?.toLowerCase() || c.topic === address
     );
     const chatMessages = conversation ? messages.get(conversation.topic) || [] : [];
 
-    const peerHandle = address ? getHandleForAddress(address) : null;
-    const displayName = peerHandle || truncateAddress(address || '');
+    const isMe = address?.toLowerCase() === user?.wallet?.address?.toLowerCase();
+
+    // Determine display name and avatar
+    const isGroup = conversation?.type === 'group';
+    const peerHandle = !isGroup && address ? getHandleForAddress(address) : null;
+
+    const finalDisplayName = isMe
+        ? (identity?.displayName || 'Me')
+        : isGroup
+            ? (conversation.groupName || 'Group Chat')
+            : (peerHandle || truncateAddress(address || ''));
+
+    const finalAvatarUrl = isMe
+        ? identity?.avatarUrl
+        : isGroup
+            ? conversation.groupImageUrl
+            : undefined; // Peer avatar handled by LiquidGlass for now
+
     const isAddressBlocked = address ? isBlocked(address) : false;
 
     // Scroll to bottom on new messages
@@ -137,7 +158,7 @@ export function ChatPanel({ address, onBack }: ChatPanelProps) {
     };
 
     return (
-        <div className="h-full flex flex-col bg-white">
+        <div className="h-[100dvh] flex flex-col bg-white">
             {/* Header */}
             <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-3">
                 {/* Back button (mobile) */}
@@ -153,16 +174,19 @@ export function ChatPanel({ address, onBack }: ChatPanelProps) {
                     </button>
                 )}
 
-                {/* Avatar */}
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center flex-shrink-0">
-                    <span className="text-white font-semibold">
-                        {peerHandle ? peerHandle[1].toUpperCase() : (address?.[2] || '?').toUpperCase()}
-                    </span>
-                </div>
+                {/* Avatar - Using LiquidGlassAvatar */}
+                <LiquidGlassAvatar
+                    address={address}
+                    displayName={finalDisplayName}
+                    avatarUrl={finalAvatarUrl}
+                    size="md"
+                    animate={false}
+                    showInitial={true}
+                />
 
                 {/* Name & Status */}
                 <div className="flex-1 min-w-0">
-                    <h2 className="font-semibold text-gray-900 truncate">{displayName}</h2>
+                    <h2 className="font-semibold text-gray-900 truncate">{finalDisplayName}</h2>
                     <div className="flex items-center gap-1.5">
                         <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-gray-400'}`} />
                         <span className="text-xs text-gray-500">
@@ -197,6 +221,21 @@ export function ChatPanel({ address, onBack }: ChatPanelProps) {
                                     exit={{ opacity: 0, scale: 0.95, y: -8 }}
                                     transition={{ duration: 0.15 }}
                                 >
+                                    {isGroup && (
+                                        <button
+                                            onClick={() => {
+                                                setShowGroupInfo(true);
+                                                setShowActions(false);
+                                                triggerHaptic('light');
+                                            }}
+                                            className="w-full px-4 py-2.5 text-left text-gray-700 hover:bg-gray-50 flex items-center gap-2 text-sm"
+                                        >
+                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                            Group Info
+                                        </button>
+                                    )}
                                     <button
                                         onClick={() => {
                                             navigator.clipboard?.writeText(address || '');
@@ -208,17 +247,19 @@ export function ChatPanel({ address, onBack }: ChatPanelProps) {
                                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                                         </svg>
-                                        Copy Address
+                                        {isGroup ? 'Copy Group ID' : 'Copy Address'}
                                     </button>
-                                    <button
-                                        onClick={handleBlock}
-                                        className="w-full px-4 py-2.5 text-left text-red-600 hover:bg-red-50 flex items-center gap-2 text-sm"
-                                    >
-                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-                                        </svg>
-                                        Block User
-                                    </button>
+                                    {!isGroup && (
+                                        <button
+                                            onClick={handleBlock}
+                                            className="w-full px-4 py-2.5 text-left text-red-600 hover:bg-red-50 flex items-center gap-2 text-sm"
+                                        >
+                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                                            </svg>
+                                            Block User
+                                        </button>
+                                    )}
                                 </motion.div>
                             </>
                         )}
@@ -241,18 +282,14 @@ export function ChatPanel({ address, onBack }: ChatPanelProps) {
                     </div>
                 ) : chatMessages.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full text-center">
-                        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center mb-4">
-                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center">
-                                <span className="text-white font-semibold">
-                                    {peerHandle ? peerHandle[1].toUpperCase() : (address?.[2] || '?').toUpperCase()}
-                                </span>
-                            </div>
+                        <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+                            <span className="text-2xl">👋</span>
                         </div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-1">
-                            Start chatting with {displayName}
+                        <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                            Start chatting with {finalDisplayName}
                         </h3>
-                        <p className="text-gray-500 text-sm max-w-xs">
-                            Messages are end-to-end encrypted
+                        <p className="text-gray-500 max-w-sm">
+                            Messages are end-to-end encrypted. Only you and {finalDisplayName} can read them.
                         </p>
                     </div>
                 ) : (
@@ -279,8 +316,8 @@ export function ChatPanel({ address, onBack }: ChatPanelProps) {
                                     >
                                         <div
                                             className={`max-w-[75%] px-4 py-2.5 ${isSent
-                                                    ? 'bg-gray-900 text-white rounded-2xl rounded-br-md'
-                                                    : 'bg-white text-gray-900 rounded-2xl rounded-bl-md shadow-sm'
+                                                ? 'bg-gray-900 text-white rounded-2xl rounded-br-md'
+                                                : 'bg-white text-gray-900 rounded-2xl rounded-bl-md shadow-sm'
                                                 }`}
                                         >
                                             <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">
@@ -338,6 +375,16 @@ export function ChatPanel({ address, onBack }: ChatPanelProps) {
                     </motion.button>
                 </div>
             </div>
-        </div>
+            {/* Group Info Modal */}
+            {isGroup && conversation && (
+                <GroupInfoModal
+                    isOpen={showGroupInfo}
+                    onClose={() => setShowGroupInfo(false)}
+                    groupId={conversation.topic}
+                    groupName={conversation.groupName || 'Group Chat'}
+                    groupImageUrl={conversation.groupImageUrl}
+                />
+            )}
+        </div >
     );
 }

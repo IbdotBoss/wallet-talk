@@ -5,12 +5,14 @@
  * derived deterministically from wallet addresses.
  */
 
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { generateAvatarGradient, getAvatarInitial } from '@/lib/AvatarGenerator';
 
 interface LiquidGlassAvatarProps {
     address: string;
     displayName?: string | null;
+    avatarUrl?: string | null;
     size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
     className?: string;
     showInitial?: boolean;
@@ -26,16 +28,17 @@ const sizeClasses = {
 };
 
 const borderRadiusClasses = {
-    sm: 'rounded-lg',
-    md: 'rounded-xl',
-    lg: 'rounded-xl',
-    xl: 'rounded-2xl',
-    '2xl': 'rounded-3xl',
+    sm: 'rounded-full',
+    md: 'rounded-full',
+    lg: 'rounded-full',
+    xl: 'rounded-full',
+    '2xl': 'rounded-full',
 };
 
 export function LiquidGlassAvatar({
     address,
     displayName,
+    avatarUrl,
     size = 'lg',
     className = '',
     showInitial = true,
@@ -43,10 +46,42 @@ export function LiquidGlassAvatar({
 }: LiquidGlassAvatarProps) {
     const gradient = generateAvatarGradient(address);
     const initial = getAvatarInitial(displayName || null, address);
+    const [imageError, setImageError] = useState(false);
+
+    // Reset error state when avatarUrl changes
+    useEffect(() => {
+        setImageError(false);
+    }, [avatarUrl]);
 
     const baseStyles = {
         background: gradient,
     };
+
+    // If we have a custom avatar URL and no error, show the image
+    if (avatarUrl && !imageError) {
+        return (
+            <motion.div
+                className={`
+                    ${sizeClasses[size]}
+                    ${borderRadiusClasses[size]}
+                    overflow-hidden
+                    shadow-lg
+                    ${className}
+                `}
+                initial={animate ? { scale: 0.8, opacity: 0 } : false}
+                animate={animate ? { scale: 1, opacity: 1 } : false}
+                whileHover={animate ? { scale: 1.05 } : undefined}
+                transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+            >
+                <img
+                    src={avatarUrl}
+                    alt={displayName || 'Avatar'}
+                    className="w-full h-full object-cover"
+                    onError={() => setImageError(true)}
+                />
+            </motion.div>
+        );
+    }
 
     return (
         <motion.div

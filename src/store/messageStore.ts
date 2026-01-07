@@ -1,7 +1,7 @@
 /**
  * Message Store - Zustand state management for conversations and messages
  * 
- * Uses real-time streamMessages() WebSocket listener.
+ * Supports both DM and Group conversations.
  * Integrates with BlocklistService for filtering.
  */
 
@@ -15,11 +15,16 @@ export interface Message {
     content: string;
     timestamp: Date;
     isSent: boolean;
+    // Future: contentType, replyTo, reactions
 }
 
 export interface Conversation {
-    peerAddress: string;
-    topic: string;
+    peerAddress: string;         // For DMs: peer address. For groups: empty string
+    topic: string;               // Unique conversation identifier
+    type: 'dm' | 'group';        // Conversation type
+    groupName?: string;          // For groups: display name
+    groupImageUrl?: string;      // For groups: avatar URL
+    memberCount?: number;        // For groups: number of members
     lastMessage?: string;
     lastMessageTime?: Date;
     unreadCount: number;
@@ -32,15 +37,33 @@ interface MessageState {
     isLoading: boolean;
     error: string | null;
 
-    // Actions
+    // Filter state for unified list
+    activeFilter: 'all' | 'dms' | 'groups';
+
+    // Actions - Conversations
     setConversations: (conversations: Conversation[]) => void;
     addConversation: (conversation: Conversation) => void;
+    updateConversation: (topic: string, updates: Partial<Conversation>) => void;
+    removeConversation: (topic: string) => void;
+
+    // Actions - Messages
     setMessages: (topic: string, messages: Message[]) => void;
     addMessage: (topic: string, message: Message) => void;
     markAsRead: (topic: string) => void;
+
+    // Actions - Filter
+    setFilter: (filter: 'all' | 'dms' | 'groups') => void;
+
+    // Actions - Utility
     setLoading: (loading: boolean) => void;
     setError: (error: string | null) => void;
     clearAll: () => void;
+
+    // Selectors
+    getFilteredConversations: () => Conversation[];
+    getConversationByTopic: (topic: string) => Conversation | undefined;
+    getDmConversations: () => Conversation[];
+    getGroupConversations: () => Conversation[];
 }
 
 export const useMessageStore = create<MessageState>()(
@@ -50,28 +73,65 @@ export const useMessageStore = create<MessageState>()(
             messages: new Map(),
             isLoading: false,
             error: null,
+            activeFilter: 'all',
+
+            // ================================================================
+            // CONVERSATION ACTIONS
+            // ================================================================
 
             setConversations: (conversations) => {
-                // Filter out blocked addresses
+                // Filter out blocked addresses (only for DMs)
                 const filtered = conversations.filter(
-                    (c) => !isBlocked(c.peerAddress)
+                    (c) => c.type === 'group' || !isBlocked(c.peerAddress)
                 );
+                // Sort by lastMessageTime (newest first)
+                filtered.sort((a, b) => {
+                    const timeA = a.lastMessageTime?.getTime() || 0;
+                    const timeB = b.lastMessageTime?.getTime() || 0;
+                    return timeB - timeA;
+                });
                 set({ conversations: filtered });
             },
 
             addConversation: (conversation) => {
-                // Don't add if blocked
-                if (isBlocked(conversation.peerAddress)) return;
+                // Don't add if DM and blocked
+                if (conversation.type === 'dm' && isBlocked(conversation.peerAddress)) return;
 
+                set((state) => {
+                    // Check if already exists
+                    const exists = state.conversations.find(c => c.topic === conversation.topic);
+                    if (exists) {
+                        // Update existing
+                        return {
+                            conversations: state.conversations.map(c =>
+                                c.topic === conversation.topic ? { ...c, ...conversation } : c
+                            ),
+                        };
+                    }
+                    // Add new at the beginning
+                    return {
+                        conversations: [conversation, ...state.conversations],
+                    };
+                });
+            },
+
+            updateConversation: (topic, updates) => {
                 set((state) => ({
-                    conversations: [
-                        conversation,
-                        ...state.conversations.filter(
-                            (c) => c.topic !== conversation.topic
-                        ),
-                    ],
+                    conversations: state.conversations.map((c) =>
+                        c.topic === topic ? { ...c, ...updates } : c
+                    ),
                 }));
             },
+
+            removeConversation: (topic) => {
+                set((state) => ({
+                    conversations: state.conversations.filter((c) => c.topic !== topic),
+                }));
+            },
+
+            // ================================================================
+            // MESSAGE ACTIONS
+            // ================================================================
 
             setMessages: (topic, messages) => {
                 const newMap = new Map(get().messages);
@@ -96,9 +156,9 @@ export const useMessageStore = create<MessageState>()(
                 newMap.set(topic, [...existing, message]);
                 set({ messages: newMap });
 
-                // Update conversation last message
-                set((state) => ({
-                    conversations: state.conversations.map((c) =>
+                // Update conversation last message and move to top
+                set((state) => {
+                    const updatedConversations = state.conversations.map((c) =>
                         c.topic === topic
                             ? {
                                 ...c,
@@ -107,8 +167,15 @@ export const useMessageStore = create<MessageState>()(
                                 unreadCount: message.isSent ? c.unreadCount : c.unreadCount + 1,
                             }
                             : c
-                    ),
-                }));
+                    );
+                    // Sort to move updated conversation to top
+                    updatedConversations.sort((a, b) => {
+                        const timeA = a.lastMessageTime?.getTime() || 0;
+                        const timeB = b.lastMessageTime?.getTime() || 0;
+                        return timeB - timeA;
+                    });
+                    return { conversations: updatedConversations };
+                });
             },
 
             markAsRead: (topic) => {
@@ -119,6 +186,18 @@ export const useMessageStore = create<MessageState>()(
                 }));
             },
 
+            // ================================================================
+            // FILTER ACTIONS
+            // ================================================================
+
+            setFilter: (filter) => {
+                set({ activeFilter: filter });
+            },
+
+            // ================================================================
+            // UTILITY ACTIONS
+            // ================================================================
+
             setLoading: (isLoading) => set({ isLoading }),
             setError: (error) => set({ error }),
 
@@ -127,7 +206,36 @@ export const useMessageStore = create<MessageState>()(
                     conversations: [],
                     messages: new Map(),
                     error: null,
+                    activeFilter: 'all',
                 });
+            },
+
+            // ================================================================
+            // SELECTORS
+            // ================================================================
+
+            getFilteredConversations: () => {
+                const { conversations, activeFilter } = get();
+                switch (activeFilter) {
+                    case 'dms':
+                        return conversations.filter(c => c.type === 'dm');
+                    case 'groups':
+                        return conversations.filter(c => c.type === 'group');
+                    default:
+                        return conversations;
+                }
+            },
+
+            getConversationByTopic: (topic) => {
+                return get().conversations.find(c => c.topic === topic);
+            },
+
+            getDmConversations: () => {
+                return get().conversations.filter(c => c.type === 'dm');
+            },
+
+            getGroupConversations: () => {
+                return get().conversations.filter(c => c.type === 'group');
             },
         }),
         {
@@ -135,6 +243,7 @@ export const useMessageStore = create<MessageState>()(
             // Only persist conversations, not messages (to limit storage)
             partialize: (state) => ({
                 conversations: state.conversations,
+                activeFilter: state.activeFilter,
             }),
         }
     )
