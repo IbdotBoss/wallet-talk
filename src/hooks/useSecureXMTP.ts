@@ -9,30 +9,24 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { Client, type Signer, type Conversation, type Group, ConsentState } from '@xmtp/browser-sdk';
+import { toBytes } from 'viem'; // Use viem's toBytes like official xmtp.chat
 import { useMessageStore, type Message as StoreMessage, type Conversation as StoreConversation } from '@/store/messageStore';
 import { sanitizeMessage, validateAddress, logSecurityEvent } from '@/lib/SecurityService';
 
 // App version for XMTP analytics (recommended by XMTP docs)
 const APP_VERSION = 'wallet-talk/1.0.0';
 
-// Connection timeout in milliseconds
-const CONNECTION_TIMEOUT_MS = 30000; // 30 seconds
+// Connection timeout in milliseconds (increased for slow connections)
+const CONNECTION_TIMEOUT_MS = 60000; // 60 seconds
 
 // Max retry attempts for connection
-const MAX_CONNECTION_RETRIES = 2;
+const MAX_CONNECTION_RETRIES = 3;
 
-// Toggle for development - set to false for production
-const USE_MOCK_XMTP = false; // Disabled - using real XMTP network
+// Toggle for development - set to true to test UI without real XMTP
+// Set to false for production to use real XMTP network
+const USE_MOCK_XMTP = false; // Testing with real XMTP using xmtp.chat-style config
 
-// Convert hex string to Uint8Array
-function hexToBytes(hex: string): Uint8Array {
-    const cleanHex = hex.startsWith('0x') ? hex.slice(2) : hex;
-    const bytes = new Uint8Array(cleanHex.length / 2);
-    for (let i = 0; i < bytes.length; i++) {
-        bytes[i] = parseInt(cleanHex.slice(i * 2, i * 2 + 2), 16);
-    }
-    return bytes;
-}
+// Note: hexToBytes removed - using viem's toBytes instead (matches xmtp.chat)
 
 // ============================================================================
 // MOCK CLASSES FOR TESTING
@@ -255,12 +249,59 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
         // REAL XMTP CONNECTION
         try {
             console.log('[XMTP] Starting connection sequence...');
+
+            // Network diagnostics - test if XMTP endpoints are reachable
+            console.log('[XMTP] Running network diagnostics...');
+            try {
+                // Test dev network gRPC-web endpoint
+                const devEndpoint = 'https://grpc.dev.xmtp.network';
+                const prodEndpoint = 'https://grpc.xmtp.network';
+
+                // Simple fetch to check if endpoints respond
+                const devTest = fetch(devEndpoint, {
+                    method: 'HEAD',
+                    mode: 'no-cors' // Avoid CORS issues for basic reachability test
+                }).then(() => {
+                    console.log('[XMTP] Dev endpoint reachable:', devEndpoint);
+                    return true;
+                }).catch(err => {
+                    console.warn('[XMTP] Dev endpoint NOT reachable:', err.message);
+                    return false;
+                });
+
+                const prodTest = fetch(prodEndpoint, {
+                    method: 'HEAD',
+                    mode: 'no-cors'
+                }).then(() => {
+                    console.log('[XMTP] Prod endpoint reachable:', prodEndpoint);
+                    return true;
+                }).catch(err => {
+                    console.warn('[XMTP] Prod endpoint NOT reachable:', err.message);
+                    return false;
+                });
+
+                const [devReachable, prodReachable] = await Promise.all([devTest, prodTest]);
+                console.log('[XMTP] Network diagnostics complete:', { devReachable, prodReachable });
+
+                if (!devReachable && !prodReachable) {
+                    console.error('[XMTP] CRITICAL: Neither XMTP endpoint is reachable!');
+                    console.error('[XMTP] This may be due to:');
+                    console.error('  - Firewall/VPN blocking connections');
+                    console.error('  - Browser extension blocking requests');
+                    console.error('  - Network connectivity issues');
+                }
+            } catch (diagErr) {
+                console.warn('[XMTP] Network diagnostics error:', diagErr);
+            }
+
             const provider = await wallet.getEthereumProvider();
 
+            // Create signer matching official xmtp.chat implementation
             const signer: Signer = {
                 type: 'EOA',
                 getIdentifier: () => ({
-                    identifier: wallet.address,
+                    // xmtp.chat uses lowercase address
+                    identifier: wallet.address.toLowerCase(),
                     identifierKind: 'Ethereum',
                 }),
                 signMessage: async (message: string): Promise<Uint8Array> => {
@@ -270,7 +311,8 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                             method: 'personal_sign',
                             params: [message, wallet.address],
                         });
-                        return hexToBytes(signature as string);
+                        // Use viem's toBytes like xmtp.chat does
+                        return toBytes(signature as `0x${string}`);
                     } catch (signErr) {
                         console.error('[XMTP] Signing failed:', signErr);
                         throw signErr;
@@ -279,18 +321,33 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
             };
 
             console.log('[XMTP] Creating Client...');
-            console.log('[XMTP] Wallet address:', wallet.address);
-            console.log('[XMTP] Using environment: dev (testing connectivity)');
+            console.log('[XMTP] Wallet address:', wallet.address.toLowerCase());
+            console.log('[XMTP] Using environment: dev');
             console.log('[XMTP] Timeout set to:', CONNECTION_TIMEOUT_MS, 'ms');
 
-            // Create client with timeout to prevent indefinite waiting
-            // Using 'dev' environment first to test connectivity (default per XMTP docs)
+            // Create client with simplified options matching official xmtp.chat
+            // Key: No dbPath, no apiUrl, no disableDeviceSync - use defaults
+            const createClient = async () => {
+                try {
+                    console.log('[XMTP] Calling Client.create()...');
+                    const client = await Client.create(signer, {
+                        env: 'dev', // Use dev for testing, switch to 'production' later
+                        appVersion: APP_VERSION,
+                        loggingLevel: 'debug', // Enable debug logging
+                    });
+                    console.log('[XMTP] Client.create() succeeded!');
+                    return client;
+                } catch (sdkErr) {
+                    console.error('[XMTP] SDK Error during Client.create():', sdkErr);
+                    console.error('[XMTP] SDK Error name:', (sdkErr as Error)?.name);
+                    console.error('[XMTP] SDK Error message:', (sdkErr as Error)?.message);
+                    console.error('[XMTP] SDK Error stack:', (sdkErr as Error)?.stack);
+                    throw sdkErr;
+                }
+            };
+
             const xmtpClient = await Promise.race([
-                Client.create(signer, {
-                    env: 'dev', // Changed from 'production' to test connectivity
-                    appVersion: APP_VERSION,
-                    loggingLevel: 'debug', // Enable debug logging to see what's happening
-                }),
+                createClient(),
                 new Promise<never>((_, reject) =>
                     setTimeout(() => reject(new Error('XMTP connection timeout - please try again')), CONNECTION_TIMEOUT_MS)
                 ),

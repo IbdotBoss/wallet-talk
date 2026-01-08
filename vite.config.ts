@@ -1,7 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
-import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -10,15 +9,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
     plugins: [
         react(),
-        // Node.js polyfills for XMTP (requires Buffer, etc.)
-        nodePolyfills({
-            include: ['buffer', 'process', 'util', 'stream', 'crypto'],
-            globals: {
-                Buffer: true,
-                global: true,
-                process: true,
-            },
-        }),
+        // NOTE: nodePolyfills removed to match xmtp.chat config
+        // The browser-sdk v5 handles its own polyfills internally
         VitePWA({
             registerType: 'autoUpdate',
             includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
@@ -79,13 +71,8 @@ export default defineConfig({
         global: 'globalThis',
     },
     optimizeDeps: {
-        // XMTP packages use WASM bindings and import.meta.url - must be excluded
-        exclude: ['@xmtp/wasm-bindings', '@xmtp/browser-sdk'],
-        // protobufjs is CommonJS and needs to be pre-bundled for ESM compatibility
-        include: ['protobufjs/minimal', 'buffer'],
-        esbuildOptions: {
-            target: 'esnext',
-        },
+        // XMTP official config from xmtp.chat - only exclude wasm-bindings
+        exclude: ['@xmtp/wasm-bindings'],
     },
     build: {
         target: 'esnext',
