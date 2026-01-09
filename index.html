@@ -42,6 +42,25 @@
 
 <body>
   <div id="root"></div>
+
+  <!-- Buffer polyfill - must load before any modules that use Buffer (like @xmtp/proto) -->
+  <script>
+    // Ensure Buffer is globally available for modules that expect it
+    (function () {
+      if (typeof globalThis.Buffer === 'undefined') {
+        console.log('[Polyfill] Buffer not found, will be provided by nodePolyfills');
+      }
+      // Ensure global is defined
+      if (typeof globalThis.global === 'undefined') {
+        globalThis.global = globalThis;
+      }
+      // Ensure process is defined
+      if (typeof globalThis.process === 'undefined') {
+        globalThis.process = { env: {} };
+      }
+    })();
+  </script>
+
   <script type="module" src="/src/main.tsx"></script>
 </body>
 

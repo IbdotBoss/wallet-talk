@@ -9,8 +9,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
     plugins: [
         react(),
-        // NOTE: nodePolyfills removed to match xmtp.chat config
-        // The browser-sdk v5 handles its own polyfills internally
         VitePWA({
             registerType: 'autoUpdate',
             includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
@@ -70,8 +68,8 @@ export default defineConfig({
     define: {
         global: 'globalThis',
     },
+    // XMTP - xmtp.chat style config (minimal)
     optimizeDeps: {
-        // XMTP official config from xmtp.chat - only exclude wasm-bindings
         exclude: ['@xmtp/wasm-bindings'],
     },
     build: {
@@ -81,7 +79,6 @@ export default defineConfig({
                 manualChunks: {
                     'vendor-react': ['react', 'react-dom', 'react-router-dom'],
                     'vendor-privy': ['@privy-io/react-auth'],
-                    'vendor-xmtp': ['@xmtp/browser-sdk'],
                     'vendor-motion': ['framer-motion'],
                 },
             },

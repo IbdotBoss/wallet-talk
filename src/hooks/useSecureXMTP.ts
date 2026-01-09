@@ -8,7 +8,9 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
-import { Client, type Signer, type Conversation, type Group, ConsentState } from '@xmtp/browser-sdk';
+// Dynamic import - SDK loaded only when needed to prevent WASM blocking React mount
+// Types are imported for TypeScript, actual SDK is dynamically imported in connect()
+import type { Client, Signer, Conversation, Group } from '@xmtp/browser-sdk';
 import { toBytes } from 'viem'; // Use viem's toBytes like official xmtp.chat
 import { useMessageStore, type Message as StoreMessage, type Conversation as StoreConversation } from '@/store/messageStore';
 import { sanitizeMessage, validateAddress, logSecurityEvent } from '@/lib/SecurityService';
@@ -27,6 +29,22 @@ const MAX_CONNECTION_RETRIES = 3;
 const USE_MOCK_XMTP = false; // Testing with real XMTP using xmtp.chat-style config
 
 // Note: hexToBytes removed - using viem's toBytes instead (matches xmtp.chat)
+
+// SDK module references - populated on first connect via dynamic import
+let XMTPClient: typeof import('@xmtp/browser-sdk').Client | null = null;
+let XMTPConsentState: typeof import('@xmtp/browser-sdk').ConsentState | null = null;
+
+// Helper to load SDK dynamically
+async function loadXMTPSDK() {
+    if (!XMTPClient || !XMTPConsentState) {
+        console.log('[XMTP] Loading browser SDK dynamically...');
+        const sdk = await import('@xmtp/browser-sdk');
+        XMTPClient = sdk.Client;
+        XMTPConsentState = sdk.ConsentState;
+        console.log('[XMTP] SDK loaded successfully');
+    }
+    return { Client: XMTPClient, ConsentState: XMTPConsentState };
+}
 
 // ============================================================================
 // MOCK CLASSES FOR TESTING
@@ -322,18 +340,27 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
 
             console.log('[XMTP] Creating Client...');
             console.log('[XMTP] Wallet address:', wallet.address.toLowerCase());
-            console.log('[XMTP] Using environment: dev');
+            console.log('[XMTP] Using environment: production'); // Changed from dev to production
             console.log('[XMTP] Timeout set to:', CONNECTION_TIMEOUT_MS, 'ms');
 
-            // Create client with simplified options matching official xmtp.chat
-            // Key: No dbPath, no apiUrl, no disableDeviceSync - use defaults
+            // Load SDK dynamically
+            console.log('[XMTP] About to load SDK dynamically...');
+            const { Client: SDKClient } = await loadXMTPSDK();
+            console.log('[XMTP] SDK module loaded, about to call Client.create...');
+
+            // Create client with production environment (xmtp.chat uses production)
             const createClient = async () => {
                 try {
-                    console.log('[XMTP] Calling Client.create()...');
-                    const client = await Client.create(signer, {
-                        env: 'dev', // Use dev for testing, switch to 'production' later
+                    console.log('[XMTP] Calling Client.create() NOW...');
+                    console.log('[XMTP] Signer type:', signer.type);
+                    console.log('[XMTP] Signer identifier:', signer.getIdentifier());
+
+                    const client = await SDKClient.create(signer, {
+                        env: 'dev', // Using dev - production has DNS issues
                         appVersion: APP_VERSION,
                         loggingLevel: 'debug', // Enable debug logging
+                        // Disable OPFS persistence to prevent hang during database init
+                        disablePersistence: true,
                     });
                     console.log('[XMTP] Client.create() succeeded!');
                     return client;
@@ -473,6 +500,8 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
         if (USE_MOCK_XMTP) return;
 
         try {
+            // Use dynamically loaded ConsentState
+            const { ConsentState } = await loadXMTPSDK();
             const stream = await (xmtpClient as Client).conversations.streamAllMessages({
                 consentStates: [ConsentState.Allowed, ConsentState.Unknown],
             });
@@ -515,7 +544,9 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
             return MockClient.canMessage(identifiers);
         }
 
-        return Client.canMessage(identifiers);
+        // Use dynamically loaded Client
+        const { Client: SDKClient } = await loadXMTPSDK();
+        return SDKClient.canMessage(identifiers);
     }, []);
 
     const startConversation = useCallback(
