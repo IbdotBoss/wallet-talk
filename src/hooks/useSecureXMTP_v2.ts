@@ -19,7 +19,7 @@ import { sanitizeMessage, validateAddress, logSecurityEvent } from '@/lib/Securi
 const APP_VERSION = 'wallet-talk/1.0.0';
 
 // Connection timeout in milliseconds (increased for slow connections)
-const CONNECT5ION_TIMEOUT_MS = 60000; // 60 seconds
+const CONNECTION_TIMEOUT_MS = 60000; // 60 seconds
 
 // Max retry attempts for connection
 const MAX_CONNECTION_RETRIES = 3;
@@ -340,35 +340,75 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
 
             console.log('[XMTP] Creating Client...');
             console.log('[XMTP] Wallet address:', wallet.address.toLowerCase());
-            console.log('[XMTP] Using environment: production'); // Changed from dev to production
+            console.log('[XMTP] Using environment: dev'); // Using dev network
             console.log('[XMTP] Timeout set to:', CONNECTION_TIMEOUT_MS, 'ms');
+            console.log('--- XMTP HOOK V2 ACTIVE ---');
 
             // Load SDK dynamically
             console.log('[XMTP] About to load SDK dynamically...');
             const { Client: SDKClient } = await loadXMTPSDK();
             console.log('[XMTP] SDK module loaded, about to call Client.create...');
 
-            // Create client with production environment (xmtp.chat uses production)
+            // Create client with dev environment
             const createClient = async () => {
+                const dbPath = `xmtp-${wallet.address.toLowerCase()}`;
+                console.log('[XMTP] Using dbPath:', dbPath);
+
                 try {
                     console.log('[XMTP] Calling Client.create() NOW...');
                     console.log('[XMTP] Signer type:', signer.type);
                     console.log('[XMTP] Signer identifier:', signer.getIdentifier());
 
                     const client = await SDKClient.create(signer, {
-                        env: 'dev', // Using dev - production has DNS issues
+                        env: 'dev',
                         appVersion: APP_VERSION,
-                        loggingLevel: 'debug', // Enable debug logging
-                        // Disable OPFS persistence to prevent hang during database init
-                        disablePersistence: true,
+                        loggingLevel: 'debug',
+                        dbPath,
                     });
                     console.log('[XMTP] Client.create() succeeded!');
                     return client;
-                } catch (sdkErr) {
-                    console.error('[XMTP] SDK Error during Client.create():', sdkErr);
-                    console.error('[XMTP] SDK Error name:', (sdkErr as Error)?.name);
-                    console.error('[XMTP] SDK Error message:', (sdkErr as Error)?.message);
-                    console.error('[XMTP] SDK Error stack:', (sdkErr as Error)?.stack);
+                } catch (sdkErr: unknown) {
+                    const error = sdkErr as Error;
+                    console.error('[XMTP] SDK Error during Client.create():', error?.message);
+
+                    // Check if this is the installation limit error (V3 specific)
+                    if (error?.message?.includes('10/10 installations') ||
+                        error?.message?.includes('revoke existing installations')) {
+                        console.log('[XMTP] Installation limit reached - revoking old installations...');
+
+                        try {
+                            // Create client WITHOUT auto-registering
+                            console.log('[XMTP] Creating client with disableAutoRegister...');
+                            const clientForRevocation = await SDKClient.create(signer, {
+                                env: 'dev',
+                                appVersion: APP_VERSION,
+                                loggingLevel: 'debug',
+                                dbPath,
+                                disableAutoRegister: true,
+                            });
+
+                            // Revoke ALL other installations - user will need to sign again
+                            console.log('[XMTP] Calling revokeAllOtherInstallations()...');
+                            console.log('[XMTP] This will require another signature from your wallet.');
+                            await clientForRevocation.revokeAllOtherInstallations();
+                            console.log('[XMTP] Old installations revoked!');
+
+                            // Now register this new installation
+                            console.log('[XMTP] Registering new installation...');
+                            await clientForRevocation.register();
+                            console.log('[XMTP] New installation registered successfully!');
+
+                            return clientForRevocation;
+                        } catch (revokeErr) {
+                            console.error('[XMTP] Failed to revoke installations:', revokeErr);
+                            throw new Error('Failed to revoke old installations. Please try again or clear site data.');
+                        }
+                    }
+
+                    // If OPFS error, suggest clearing storage
+                    if (error?.message?.includes('OPFS') || error?.message?.includes('database')) {
+                        console.error('[XMTP] Possible OPFS database issue - try clearing site storage');
+                    }
                     throw sdkErr;
                 }
             };
@@ -546,27 +586,42 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
 
         // Use dynamically loaded Client
         const { Client: SDKClient } = await loadXMTPSDK();
-        return SDKClient.canMessage(identifiers);
+        return SDKClient.canMessage(identifiers, { env: 'dev' });
     }, []);
 
     const startConversation = useCallback(
         async (peerAddress: string): Promise<Conversation | MockConversation | null> => {
-            if (!client) return null;
+            console.log('[XMTP] startConversation called with:', peerAddress);
+
+            if (!client) {
+                console.log('[XMTP] startConversation failed: no client');
+                setError('Not connected to XMTP');
+                return null;
+            }
+
             if (!validateAddress(peerAddress)) {
+                console.log('[XMTP] startConversation failed: invalid address');
                 setError('Invalid address');
                 return null;
             }
 
             try {
                 // Check if can message
+                console.log('[XMTP] Checking canMessage for:', peerAddress);
                 const canMessageResult = await checkCanMessage([peerAddress]);
+                console.log('[XMTP] canMessage result:', canMessageResult);
+                console.log('[XMTP] canMessage for', peerAddress.toLowerCase(), ':', canMessageResult.get(peerAddress.toLowerCase()));
+
                 if (!canMessageResult.get(peerAddress.toLowerCase())) {
+                    console.log('[XMTP] Peer is NOT on XMTP network');
                     setError('This address is not on XMTP. They need to enable XMTP first.');
                     return null;
                 }
 
                 // Create or get existing DM
+                console.log('[XMTP] Creating DM with:', peerAddress);
                 const dm = await client.conversations.newDm(peerAddress);
+                console.log('[XMTP] DM created:', dm.id);
 
                 // Add to store
                 messageStore.addConversation({
@@ -580,6 +635,11 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                 return dm as Conversation | MockConversation;
             } catch (err) {
                 console.error('[XMTP] Start conversation error:', err);
+                console.error('[XMTP] Error details:', {
+                    name: (err as Error).name,
+                    message: (err as Error).message,
+                    stack: (err as Error).stack,
+                });
                 setError(err instanceof Error ? err.message : 'Failed to start conversation');
                 return null;
             }

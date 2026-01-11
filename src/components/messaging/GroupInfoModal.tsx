@@ -7,7 +7,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePrivy } from '@privy-io/react-auth';
-import { useSecureXMTP } from '@/hooks/useSecureXMTP';
+import { useSecureXMTP } from '@/hooks/useSecureXMTP_v2';
 import { validateAddress, truncateAddress } from '@/lib/SecurityService';
 import { LiquidGlassAvatar } from '@/components/ui/LiquidGlassAvatar';
 import { AvatarUpload } from '@/components/ui/AvatarUpload';

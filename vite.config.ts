@@ -68,9 +68,10 @@ export default defineConfig({
     define: {
         global: 'globalThis',
     },
-    // XMTP - xmtp.chat style config (minimal)
+    // XMTP V3 Configuration
     optimizeDeps: {
-        exclude: ['@xmtp/wasm-bindings'],
+        exclude: ['@xmtp/wasm-bindings', '@xmtp/browser-sdk'],
+        include: ['@xmtp/proto'],
     },
     build: {
         target: 'esnext',

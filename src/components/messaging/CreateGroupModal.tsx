@@ -9,7 +9,7 @@
 
 import { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useSecureXMTP } from '@/hooks/useSecureXMTP';
+import { useSecureXMTP } from '@/hooks/useSecureXMTP_v2';
 import { validateAddress, truncateAddress } from '@/lib/SecurityService';
 import { LiquidGlassAvatar } from '@/components/ui/LiquidGlassAvatar';
 import { triggerHaptic, hapticSuccess, hapticError } from '@/lib/haptics';

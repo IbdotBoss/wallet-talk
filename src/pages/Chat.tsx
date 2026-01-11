@@ -11,7 +11,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePrivy } from '@privy-io/react-auth';
 import { useMessageStore } from '@/store/messageStore';
-import { useSecureXMTP } from '@/hooks/useSecureXMTP';
+import { useSecureXMTP } from '@/hooks/useSecureXMTP_v2';
 import { getHandleForAddress } from '@/lib/UsernameGenerator';
 import { truncateAddress, validateMessageLength } from '@/lib/SecurityService';
 import { triggerHaptic, hapticSuccess, hapticError } from '@/lib/haptics';

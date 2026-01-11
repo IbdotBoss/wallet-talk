@@ -14,7 +14,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { AvatarUpload } from '@/components/ui/AvatarUpload';
 import { generateShuffleHandle } from '@/lib/UsernameGenerator';
 import { useIdentityStore, createIdentity } from '@/store/identityStore';
-import { useSecureXMTP } from '@/hooks/useSecureXMTP';
+import { useSecureXMTP } from '@/hooks/useSecureXMTP_v2';
 import { triggerHaptic, hapticSuccess } from '@/lib/haptics';
 import { ShimmerButtonSimple } from '@/components/ui/shimmer-button-simple';
 
