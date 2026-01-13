@@ -46,6 +46,20 @@ async function loadXMTPSDK() {
     return { Client: XMTPClient, ConsentState: XMTPConsentState };
 }
 
+// Helper to get or create database encryption key
+const getOrCreateDbEncryptionKey = async (address: string): Promise<Uint8Array> => {
+    const storageKey = `xmtp-db-key-${address.toLowerCase()}`;
+    let keyHex = localStorage.getItem(storageKey);
+    
+    if (!keyHex) {
+        const key = crypto.getRandomValues(new Uint8Array(32));
+        keyHex = Array.from(key).map(b => b.toString(16).padStart(2, '0')).join('');
+        localStorage.setItem(storageKey, keyHex);
+    }
+    
+    return new Uint8Array(keyHex.match(/.{2}/g)!.map(byte => parseInt(byte, 16)));
+};
+
 // ============================================================================
 // MOCK CLASSES FOR TESTING
 // ============================================================================
@@ -230,6 +244,24 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
         return embedded || wallets[0];
     }, [wallets]);
 
+    // Helper to resolve Ethereum address to inbox ID
+    const getInboxIdFromAddress = useCallback(async (address: string): Promise<string | null> => {
+        if (!client) return null;
+        
+        try {
+            console.log('[XMTP] Resolving inbox ID for address:', address);
+            const inboxId = await (client as Client).findInboxIdByIdentifier({
+                identifier: address.toLowerCase(),
+                identifierKind: 'Ethereum',
+            });
+            console.log('[XMTP] Resolved inbox ID:', inboxId);
+            return inboxId || null;
+        } catch (err) {
+            console.error('[XMTP] Failed to get inbox ID for address:', address, err);
+            return null;
+        }
+    }, [client]);
+
     // ========================================================================
     // CONNECTION METHODS
     // ========================================================================
@@ -353,6 +385,10 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
             const createClient = async () => {
                 const dbPath = `xmtp-${wallet.address.toLowerCase()}`;
                 console.log('[XMTP] Using dbPath:', dbPath);
+                
+                // Get or create database encryption key
+                const dbEncryptionKey = await getOrCreateDbEncryptionKey(wallet.address);
+                console.log('[XMTP] Database encryption key prepared');
 
                 try {
                     console.log('[XMTP] Calling Client.create() NOW...');
@@ -364,6 +400,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                         appVersion: APP_VERSION,
                         loggingLevel: 'debug',
                         dbPath,
+                        dbEncryptionKey,
                     });
                     console.log('[XMTP] Client.create() succeeded!');
                     return client;
@@ -586,7 +623,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
 
         // Use dynamically loaded Client
         const { Client: SDKClient } = await loadXMTPSDK();
-        return SDKClient.canMessage(identifiers, { env: 'dev' });
+        return SDKClient.canMessage(identifiers, 'dev');
     }, []);
 
     const startConversation = useCallback(
@@ -618,9 +655,21 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                     return null;
                 }
 
-                // Create or get existing DM
-                console.log('[XMTP] Creating DM with:', peerAddress);
-                const dm = await client.conversations.newDm(peerAddress);
+                // Resolve address to inbox ID for V3 API
+                console.log('[XMTP] Resolving peer address to inbox ID...');
+                const peerInboxId = await getInboxIdFromAddress(peerAddress);
+                
+                if (!peerInboxId) {
+                    console.log('[XMTP] Failed to resolve inbox ID for:', peerAddress);
+                    setError('Unable to resolve peer inbox ID. Please try again.');
+                    return null;
+                }
+                
+                console.log('[XMTP] Resolved peer inbox ID:', peerInboxId);
+
+                // Create or get existing DM using inbox ID
+                console.log('[XMTP] Creating DM with inbox ID:', peerInboxId);
+                const dm = await client.conversations.newDm(peerInboxId);
                 console.log('[XMTP] DM created:', dm.id);
 
                 // Add to store
@@ -644,7 +693,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                 return null;
             }
         },
-        [client, messageStore, checkCanMessage]
+        [client, messageStore, checkCanMessage, getInboxIdFromAddress]
     );
 
     const sendMessage = useCallback(
@@ -702,7 +751,19 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                         setError('This address is not on XMTP');
                         return false;
                     }
-                    conversation = await (client as Client).conversations.newDm(peerAddress);
+                    
+                    // Resolve address to inbox ID for V3 API
+                    console.log('[XMTP] Resolving peer address to inbox ID for sendMessage...');
+                    const peerInboxId = await getInboxIdFromAddress(peerAddress);
+                    
+                    if (!peerInboxId) {
+                        console.log('[XMTP] Failed to resolve inbox ID for:', peerAddress);
+                        setError('Unable to resolve peer inbox ID. Please try again.');
+                        return false;
+                    }
+                    
+                    console.log('[XMTP] Creating DM with inbox ID:', peerInboxId);
+                    conversation = await (client as Client).conversations.newDm(peerInboxId);
                 }
 
                 await conversation.send(sanitized);
@@ -714,7 +775,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                 return false;
             }
         },
-        [client, user, messageStore, checkCanMessage]
+        [client, user, messageStore, checkCanMessage, getInboxIdFromAddress]
     );
 
     // ========================================================================
@@ -766,13 +827,30 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                     return group;
                 }
 
-                // REAL CREATE - Cast options to any since SDK types may be outdated
+                // REAL CREATE - Resolve all addresses to inbox IDs for V3 API
+                console.log('[XMTP] Resolving member addresses to inbox IDs...');
+                const inboxIdPromises = memberAddresses.map(addr => getInboxIdFromAddress(addr));
+                const inboxIds = await Promise.all(inboxIdPromises);
+                
+                // Filter out any addresses that couldn't be resolved
+                const validInboxIds = inboxIds.filter((id): id is string => id !== null);
+                
+                if (validInboxIds.length !== memberAddresses.length) {
+                    const failedCount = memberAddresses.length - validInboxIds.length;
+                    console.warn('[XMTP] Failed to resolve', failedCount, 'inbox IDs');
+                    setError(`Failed to resolve inbox IDs for ${failedCount} member(s). Please try again.`);
+                    return null;
+                }
+                
+                console.log('[XMTP] All addresses resolved to inbox IDs:', validInboxIds);
+
+                // Cast options to any since SDK types may be outdated
                 const groupOptions: any = {
                     name: options?.name,
                     imageUrl: options?.imageUrl,
                     description: options?.description,
                 };
-                const group = await (client as Client).conversations.newGroup(memberAddresses, groupOptions);
+                const group = await (client as Client).conversations.newGroup(validInboxIds, groupOptions);
 
                 messageStore.addConversation({
                     peerAddress: '',
@@ -792,7 +870,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                 return null;
             }
         },
-        [client, checkCanMessage, messageStore]
+        [client, checkCanMessage, messageStore, getInboxIdFromAddress]
     );
 
     const addGroupMembers = useCallback(
