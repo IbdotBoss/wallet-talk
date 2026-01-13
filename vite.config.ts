@@ -16,6 +16,9 @@ export default defineConfig({
     },
     plugins: [
         react(),
+        nodePolyfills({
+            protocolImports: true,
+        }),
         VitePWA({
             registerType: 'autoUpdate',
             includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
@@ -70,6 +73,8 @@ export default defineConfig({
     resolve: {
         alias: {
             '@': path.resolve(__dirname, './src'),
+            // Stub @solana/kit - Privy's optional Solana dependency
+            '@solana/kit': path.resolve(__dirname, './src/solana-kit-stub.ts'),
         },
     },
     define: {
