@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -81,13 +82,33 @@ export default defineConfig({
     },
     build: {
         target: 'esnext',
+        sourcemap: false, // Disable sourcemaps to avoid parsing issues
+        commonjsOptions: {
+            transformMixedEsModules: true,
+            ignoreTryCatch: false,
+        },
         rollupOptions: {
+            onwarn(warning, warn) {
+                // Ignore annotation/comment warnings
+                if (warning.code === 'SOURCEMAP_ERROR' ||
+                    warning.message?.includes('annotation') ||
+                    warning.message?.includes('comment')) {
+                    return;
+                }
+                warn(warning);
+            },
             output: {
                 manualChunks: {
                     'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-                    'vendor-privy': ['@privy-io/react-auth'],
                     'vendor-motion': ['framer-motion'],
                 },
+            },
+        },
+        // Use terser instead of esbuild for better comment handling
+        minify: 'terser',
+        terserOptions: {
+            format: {
+                comments: false,
             },
         },
     },

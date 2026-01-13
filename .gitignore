@@ -36,3 +36,4 @@ dev-dist/
 
 # TypeScript cache
 *.tsbuildinfo
+.vercel

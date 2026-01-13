@@ -5,12 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "vite build",
     "preview": "vite preview",
     "test": "vitest"
   },
   "dependencies": {
-    "@privy-io/react-auth": "^2.12.0",
+    "@privy-io/react-auth": "^3.10.1",
     "@types/matter-js": "^0.20.2",
     "@xmtp/browser-sdk": "^5.3.0",
     "buffer": "^6.0.3",
@@ -28,7 +28,7 @@
     "svg-path-commander": "^2.1.11",
     "tailwind-merge": "^3.4.0",
     "tailwindcss-animate": "^1.0.7",
-    "vite-plugin-node-polyfills": "^0.24.0",
+    "vite-plugin-node-polyfills": "^0.2.0",
     "zustand": "^5.0.0"
   },
   "devDependencies": {
@@ -43,8 +43,8 @@
     "postcss": "^8.5.0",
     "tailwindcss": "^3.4.17",
     "typescript": "~5.6.2",
-    "vite": "^6.0.0",
+    "vite": "^5.4.0",
     "vite-plugin-pwa": "^0.21.0",
-    "vitest": "^2.1.0"
+    "vitest": "^2.0.0"
   }
 }
