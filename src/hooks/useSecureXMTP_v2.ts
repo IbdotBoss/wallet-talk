@@ -57,7 +57,16 @@ const getOrCreateDbEncryptionKey = async (address: string): Promise<Uint8Array> 
         localStorage.setItem(storageKey, keyHex);
     }
     
-    return new Uint8Array(keyHex.match(/.{2}/g)!.map(byte => parseInt(byte, 16)));
+    const hexPairs = keyHex.match(/.{2}/g);
+    if (!hexPairs || hexPairs.length !== 32) {
+        // Invalid key in storage, regenerate
+        const key = crypto.getRandomValues(new Uint8Array(32));
+        keyHex = Array.from(key).map(b => b.toString(16).padStart(2, '0')).join('');
+        localStorage.setItem(storageKey, keyHex);
+        return key;
+    }
+    
+    return new Uint8Array(hexPairs.map(byte => parseInt(byte, 16)));
 };
 
 // ============================================================================
@@ -832,13 +841,21 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                 const inboxIdPromises = memberAddresses.map(addr => getInboxIdFromAddress(addr));
                 const inboxIds = await Promise.all(inboxIdPromises);
                 
-                // Filter out any addresses that couldn't be resolved
-                const validInboxIds = inboxIds.filter((id): id is string => id !== null);
+                // Filter out any addresses that couldn't be resolved and identify which ones failed
+                const validInboxIds: string[] = [];
+                const failedAddresses: string[] = [];
                 
-                if (validInboxIds.length !== memberAddresses.length) {
-                    const failedCount = memberAddresses.length - validInboxIds.length;
-                    console.warn('[XMTP] Failed to resolve', failedCount, 'inbox IDs');
-                    setError(`Failed to resolve inbox IDs for ${failedCount} member(s). Please try again.`);
+                inboxIds.forEach((id, index) => {
+                    if (id) {
+                        validInboxIds.push(id);
+                    } else {
+                        failedAddresses.push(memberAddresses[index]);
+                    }
+                });
+                
+                if (failedAddresses.length > 0) {
+                    console.warn('[XMTP] Failed to resolve inbox IDs for addresses:', failedAddresses);
+                    setError(`Failed to resolve inbox IDs for: ${failedAddresses.join(', ')}. These addresses may not be on XMTP.`);
                     return null;
                 }
                 
