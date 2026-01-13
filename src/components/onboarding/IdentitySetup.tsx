@@ -14,7 +14,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { AvatarUpload } from '@/components/ui/AvatarUpload';
 import { generateShuffleHandle } from '@/lib/UsernameGenerator';
 import { useIdentityStore, createIdentity } from '@/store/identityStore';
-import { useSecureXMTP } from '@/hooks/useSecureXMTP_v2';
 import { triggerHaptic, hapticSuccess } from '@/lib/haptics';
 import { ShimmerButtonSimple } from '@/components/ui/shimmer-button-simple';
 
@@ -27,12 +26,11 @@ const MAX_NAME_LENGTH = 24;
 
 export function IdentitySetup({ walletAddress, onComplete }: IdentitySetupProps) {
     const { setIdentity } = useIdentityStore();
-    const { connect, isConnecting, isConnected } = useSecureXMTP();
     const [displayName, setDisplayName] = useState('');
     const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
     const [isShuffling, setIsShuffling] = useState(false);
     const [hasEdited, setHasEdited] = useState(false);
-    const [isEnablingXMTP, setIsEnablingXMTP] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
 
     // Generate initial shuffle handle on mount
     useEffect(() => {
@@ -68,7 +66,7 @@ export function IdentitySetup({ walletAddress, onComplete }: IdentitySetupProps)
         if (!displayName.trim()) return;
 
         triggerHaptic('medium');
-        setIsEnablingXMTP(true);
+        setIsSaving(true);
 
         // Create and store identity with optional avatar
         const identity = createIdentity(walletAddress, displayName.trim());
@@ -78,23 +76,9 @@ export function IdentitySetup({ walletAddress, onComplete }: IdentitySetupProps)
         }
         setIdentity(identity);
 
-        // Enable XMTP for this wallet by connecting
-        // This will prompt the user to sign the XMTP identity creation message
-        // which registers their wallet on the XMTP network
-        try {
-            if (!isConnected) {
-                await connect();
-            }
-            hapticSuccess();
-            onComplete();
-        } catch (error) {
-            console.error('[IdentitySetup] XMTP enablement error:', error);
-            // Still proceed even if XMTP fails - they can retry later
-            hapticSuccess();
-            onComplete();
-        } finally {
-            setIsEnablingXMTP(false);
-        }
+        hapticSuccess();
+        setIsSaving(false);
+        onComplete();
     };
 
     const isValid = displayName.trim().length >= 2;
@@ -216,17 +200,17 @@ export function IdentitySetup({ walletAddress, onComplete }: IdentitySetupProps)
             >
                 <ShimmerButtonSimple
                     onClick={handleContinue}
-                    disabled={!isValid || isEnablingXMTP || isConnecting}
+                    disabled={!isValid || isSaving}
                     className="w-full"
                 >
-                    {isEnablingXMTP || isConnecting ? (
+                    {isSaving ? (
                         <span className="flex items-center gap-2">
                             <motion.div
                                 className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full"
                                 animate={{ rotate: 360 }}
                                 transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
                             />
-                            Enabling XMTP...
+                            Saving...
                         </span>
                     ) : (
                         'Continue'

@@ -524,6 +524,13 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
         logSecurityEvent('XMTP client disconnected');
     }, []);
 
+    const resetConnection = useCallback(() => {
+        connectionAttemptedRef.current = false;
+        connectionInProgressRef.current = false;
+        connectionRetryCount.current = 0;
+        setError(null);
+    }, []);
+
     // ========================================================================
     // CONVERSATION LOADING
     // ========================================================================
@@ -1243,14 +1250,16 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
     );
 
     // ========================================================================
-    // AUTO-CONNECT EFFECT
+    // AUTO-CONNECT EFFECT - DISABLED
     // ========================================================================
+    // Auto-connect removed to prevent race conditions with Privy auth
+    // XMTP connection is now triggered manually after identity setup
 
-    useEffect(() => {
-        if (authenticated && wallets && wallets.length > 0 && !client && !isConnecting && !connectionAttemptedRef.current) {
-            connect();
-        }
-    }, [authenticated, wallets, client, isConnecting, connect]);
+    // useEffect(() => {
+    //     if (authenticated && wallets && wallets.length > 0 && !client && !isConnecting && !connectionAttemptedRef.current) {
+    //         connect();
+    //     }
+    // }, [authenticated, wallets, client, isConnecting, connect]);
 
     // Cleanup on unmount
     useEffect(() => {
@@ -1272,6 +1281,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
         error,
         connect,
         disconnect,
+        resetConnection,
         sendMessage,
         startConversation,
         checkCanMessage,
