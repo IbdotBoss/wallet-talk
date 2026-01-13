@@ -258,6 +258,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
 
     const streamRef = useRef<AsyncGenerator | null>(null);
     const connectionAttemptedRef = useRef(false);
+    const connectionInProgressRef = useRef(false);
     const connectionRetryCount = useRef(0);
     const messageStore = useMessageStore();
 
@@ -274,6 +275,14 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
 
     const connect = useCallback(async () => {
         if (!authenticated || client || isConnecting || connectionAttemptedRef.current) return;
+        
+        // Prevent concurrent connections - this stops multiple wallet popups
+        if (connectionInProgressRef.current) {
+            console.log('[XMTP] Connection already in progress, skipping...');
+            return;
+        }
+        
+        connectionInProgressRef.current = true;
         connectionAttemptedRef.current = true;
 
         const wallet = getWallet();
@@ -294,10 +303,12 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                 setClient(mockClient);
                 logSecurityEvent('XMTP Mock client connected', { address: wallet.address });
                 setIsConnecting(false);
+                connectionInProgressRef.current = false;
                 return;
             } catch (e) {
                 setError('Mock connection failed');
                 setIsConnecting(false);
+                connectionInProgressRef.current = false;
                 return;
             }
         }
@@ -389,12 +400,11 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
 
             // Create client with dev environment
             const createClient = async () => {
-                const dbPath = `xmtp-${wallet.address.toLowerCase()}`;
-                console.log('[XMTP] Using dbPath:', dbPath);
-
-                // Get or create database encryption key for security
-                const dbEncryptionKey = await getOrCreateDbEncryptionKey(wallet.address);
-                console.log('[XMTP] Database encryption key prepared');
+                // TODO: Re-enable OPFS persistence once lock conflict issues are resolved
+                // OPFS currently causes "NoModificationAllowedError" when multiple tabs or
+                // incomplete sessions leave file handles open
+                // const dbPath = `xmtp-${wallet.address.toLowerCase()}`;
+                // const dbEncryptionKey = await getOrCreateDbEncryptionKey(wallet.address);
 
                 try {
                     console.log('[XMTP] Calling Client.create() NOW...');
@@ -405,8 +415,8 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                         env: 'dev',
                         appVersion: APP_VERSION,
                         loggingLevel: 'debug',
-                        dbPath,
-                        dbEncryptionKey,
+                        // TODO: Re-enable persistence once OPFS lock issues are resolved
+                        disablePersistence: true,
                     });
                     console.log('[XMTP] Client.create() succeeded!');
                     return client;
@@ -426,8 +436,8 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                                 env: 'dev',
                                 appVersion: APP_VERSION,
                                 loggingLevel: 'debug',
-                                dbPath,
-                                dbEncryptionKey,
+                                // TODO: Re-enable persistence once OPFS lock issues are resolved
+                                disablePersistence: true,
                                 disableAutoRegister: true,
                             });
 
@@ -474,6 +484,8 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
             // Load existing conversations and start streaming
             await loadConversations(xmtpClient);
             startMessageStream(xmtpClient);
+            
+            connectionInProgressRef.current = false;
         } catch (err) {
             console.error('[XMTP] Connection Error:', err);
             const message = err instanceof Error ? err.message : 'Failed to connect';
@@ -484,6 +496,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                 console.log(`[XMTP] Retrying connection (${connectionRetryCount.current}/${MAX_CONNECTION_RETRIES})...`);
                 setError(`Connection failed, retrying... (${connectionRetryCount.current}/${MAX_CONNECTION_RETRIES})`);
                 connectionAttemptedRef.current = false;
+                connectionInProgressRef.current = false;
                 setIsConnecting(false);
                 // Wait a bit before retrying
                 setTimeout(() => {
@@ -494,6 +507,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
 
             setError(message);
             connectionAttemptedRef.current = false;
+            connectionInProgressRef.current = false;
             logSecurityEvent('XMTP connection failed', { error: message, retries: connectionRetryCount.current });
         } finally {
             setIsConnecting(false);
