@@ -19,7 +19,7 @@ import { sanitizeMessage, validateAddress, logSecurityEvent } from '@/lib/Securi
 const APP_VERSION = 'wallet-talk/1.0.0';
 
 // Connection timeout in milliseconds (increased for slow connections)
-const CONNECT5ION_TIMEOUT_MS = 60000; // 60 seconds
+const CONNECTION_TIMEOUT_MS = 60000; // 60 seconds
 
 // Max retry attempts for connection
 const MAX_CONNECTION_RETRIES = 3;
@@ -359,8 +359,6 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                         env: 'dev', // Using dev - production has DNS issues
                         appVersion: APP_VERSION,
                         loggingLevel: 'debug', // Enable debug logging
-                        // Disable OPFS persistence to prevent hang during database init
-                        disablePersistence: true,
                     });
                     console.log('[XMTP] Client.create() succeeded!');
                     return client;

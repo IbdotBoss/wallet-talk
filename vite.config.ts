@@ -68,6 +68,12 @@ export default defineConfig({
     define: {
         global: 'globalThis',
     },
+    server: {
+        headers: {
+            'Cross-Origin-Opener-Policy': 'same-origin',
+            'Cross-Origin-Embedder-Policy': 'require-corp',
+        },
+    },
     // XMTP V3 Configuration
     optimizeDeps: {
         exclude: ['@xmtp/wasm-bindings', '@xmtp/browser-sdk'],
