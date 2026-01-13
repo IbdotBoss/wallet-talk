@@ -96,6 +96,7 @@ export const fetchSysvarRent = proxy.fetchSysvarRent;
 export const fetchSysvarEpochSchedule = proxy.fetchSysvarEpochSchedule;
 export const fetchSysvarSlotHashes = proxy.fetchSysvarSlotHashes;
 export const fetchSysvarStakeHistory = proxy.fetchSysvarStakeHistory;
+// Standard Solana sysvar addresses - these are fixed blockchain addresses
 export const SYSVAR_CLOCK_ADDRESS = 'SysvarC1ock11111111111111111111111111111111';
 export const SYSVAR_RENT_ADDRESS = 'SysvarRent111111111111111111111111111111111';
 
@@ -146,11 +147,13 @@ export const fetchAddressesForLookupTables = proxy.fetchAddressesForLookupTables
 // Program exports
 export const getProgramDerivedAddress = proxy.getProgramDerivedAddress;
 export const findProgramDerivedAddress = proxy.findProgramDerivedAddress;
+// Standard Solana SPL Token program addresses - these are fixed blockchain program IDs
 export const TOKEN_PROGRAM_ADDRESS = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
 export const TOKEN_2022_PROGRAM_ADDRESS = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb';
 
 // Error exports
 export const isSolanaError = proxy.isSolanaError;
+// Solana custom instruction error code - used for error type checking
 export const SOLANA_ERROR__INSTRUCTION_ERROR__CUSTOM = 0;
 
 // Compute budget exports
