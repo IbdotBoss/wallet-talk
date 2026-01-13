@@ -169,6 +169,8 @@ export function ConversationsSidebar({
     };
 
     const handleRetryConnection = () => {
+        // resetConnection is synchronous and resets state/refs immediately,
+        // so there's no race condition with the subsequent connect call
         resetConnection();
         handleConnectXMTP();
     };
