@@ -8,9 +8,10 @@
 import { create } from 'zustand';
 import type { Client } from '@xmtp/browser-sdk';
 
+// Use 'any' for client to support both real Client and MockClient types
 interface XMTPState {
-    // Client state
-    client: Client | null;
+    // Client state - using any to support MockClient in development
+    client: any | null;
     isConnecting: boolean;
     isConnected: boolean;
     error: string | null;
@@ -20,7 +21,7 @@ interface XMTPState {
     connectionTimestamp: number | null;
     
     // Actions
-    setClient: (client: Client | null, address?: string) => void;
+    setClient: (client: any | null, address?: string) => void;
     setConnecting: (isConnecting: boolean) => void;
     setError: (error: string | null) => void;
     reset: () => void;
@@ -59,10 +60,11 @@ export const useXMTPStore = create<XMTPState>((set) => ({
 }));
 
 // Singleton reference for the actual client object (survives React re-renders)
-let globalXMTPClient: Client | null = null;
+// Using any to support both Client and MockClient
+let globalXMTPClient: any | null = null;
 
-export const getGlobalXMTPClient = (): Client | null => globalXMTPClient;
+export const getGlobalXMTPClient = (): any | null => globalXMTPClient;
 
-export const setGlobalXMTPClient = (client: Client | null): void => {
+export const setGlobalXMTPClient = (client: any | null): void => {
     globalXMTPClient = client;
 };

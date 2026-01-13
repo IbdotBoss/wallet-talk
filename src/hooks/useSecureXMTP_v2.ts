@@ -6,7 +6,7 @@
  * Includes MOCK MODE for UI verification when network is unstable.
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 // Dynamic import - SDK loaded only when needed to prevent WASM blocking React mount
 // Types are imported for TypeScript, actual SDK is dynamically imported in connect()
@@ -259,7 +259,6 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
     const { 
         client, 
         isConnecting, 
-        isConnected,
         error, 
         connectedAddress,
         setClient, 
@@ -322,8 +321,8 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
             try {
                 await new Promise(resolve => setTimeout(resolve, 1000));
                 const mockClient = new MockClient(wallet.address);
-                setClient(mockClient as any, wallet.address);
-                setGlobalXMTPClient(mockClient as any);
+                setClient(mockClient, wallet.address);
+                setGlobalXMTPClient(mockClient);
                 logSecurityEvent('XMTP Mock client connected', { address: wallet.address });
                 setConnecting(false);
                 connectionInProgressRef.current = false;
