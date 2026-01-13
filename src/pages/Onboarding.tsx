@@ -11,7 +11,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { usePrivy } from '@privy-io/react-auth';
+import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { triggerHaptic } from '@/lib/haptics';
 import { ShimmerButtonSimple } from '@/components/ui/shimmer-button-simple';
 import { CursorBorderButton } from '@/components/ui/cursor-border-button';
@@ -27,6 +27,7 @@ type OnboardingStep = 'login' | 'identity';
 export function Onboarding() {
     const navigate = useNavigate();
     const { login, authenticated, user } = usePrivy();
+    const { wallets, ready: walletsReady } = useWallets();
     const { identity } = useIdentityStore();
     const [step, setStep] = useState<OnboardingStep>('login');
     const [isCreating, setIsCreating] = useState(false);
@@ -34,33 +35,69 @@ export function Onboarding() {
 
     // Check if user is already set up
     useEffect(() => {
-        if (authenticated && user?.wallet?.address) {
-            // If user has an identity, go to messages
-            if (identity && identity.walletAddress.toLowerCase() === user.wallet.address.toLowerCase()) {
-                navigate('/messages');
-            } else {
-                // Show identity setup for new users
+        if (authenticated) {
+            // For passkey users, wallet might not be immediately available
+            // Check if user has any linked accounts or wallets
+            const walletAddress = wallets?.[0]?.address;
+            
+            if (walletAddress) {
+                // User has a wallet address
+                if (identity && identity.walletAddress.toLowerCase() === walletAddress.toLowerCase()) {
+                    // User has completed identity setup, go to messages
+                    navigate('/messages');
+                } else {
+                    // User is authenticated but needs identity setup
+                    setStep('identity');
+                    setIsCreating(false); // Reset spinner
+                }
+            } else if (user?.linkedAccounts && user.linkedAccounts.length > 0) {
+                // User is authenticated via passkey but wallet not ready yet
+                // Show identity step - the wallet will be available soon
                 setStep('identity');
+                setIsCreating(false);
             }
+            // If authenticated but no wallet yet, stay on login screen briefly
+            // The wallet should initialize shortly for passkey users
         }
-    }, [authenticated, user, identity, navigate]);
+    }, [authenticated, user, identity, navigate, wallets]);
+
+    // Reset creating state when auth changes
+    useEffect(() => {
+        if (authenticated) {
+            setIsCreating(false);
+        }
+    }, [authenticated]);
 
     const handleCreateIdentity = async () => {
+        // Don't call login if already authenticated
+        if (authenticated) {
+            setStep('identity');
+            return;
+        }
+        
         triggerHaptic('medium');
         setIsCreating(true);
         try {
             await login();
-        } catch {
+        } catch (err) {
+            console.error('Login error:', err);
             setIsCreating(false);
         }
     };
 
     const handleConnect = async () => {
+        // Don't call login if already authenticated
+        if (authenticated) {
+            setStep('identity');
+            return;
+        }
+        
         triggerHaptic('light');
         try {
             await login();
-        } catch {
-            // User cancelled
+        } catch (err) {
+            console.error('Connect error:', err);
+            // User cancelled or error
         }
     };
 
@@ -233,11 +270,21 @@ export function Onboarding() {
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                     >
-                        {user?.wallet?.address && (
+                        {walletsReady && wallets.length > 0 ? (
                             <IdentitySetup
-                                walletAddress={user.wallet.address}
+                                walletAddress={wallets[0].address}
                                 onComplete={handleIdentityComplete}
                             />
+                        ) : (
+                            // Loading state while wallet initializes
+                            <div className="flex flex-col items-center justify-center">
+                                <motion.div
+                                    className="w-8 h-8 border-2 border-gray-300 border-t-gray-900 rounded-full"
+                                    animate={{ rotate: 360 }}
+                                    transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                                />
+                                <p className="text-gray-500 mt-4">Setting up your wallet...</p>
+                            </div>
                         )}
                     </motion.div>
                 )}
