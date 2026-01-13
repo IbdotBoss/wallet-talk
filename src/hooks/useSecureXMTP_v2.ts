@@ -57,7 +57,17 @@ const getOrCreateDbEncryptionKey = async (address: string): Promise<Uint8Array> 
         localStorage.setItem(storageKey, keyHex);
     }
     
-    return new Uint8Array(keyHex.match(/.{2}/g)!.map(byte => parseInt(byte, 16)));
+    // Convert hex string to Uint8Array
+    const matches = keyHex.match(/.{2}/g);
+    if (!matches) {
+        // If invalid hex format, regenerate key
+        const key = crypto.getRandomValues(new Uint8Array(32));
+        keyHex = Array.from(key).map(b => b.toString(16).padStart(2, '0')).join('');
+        localStorage.setItem(storageKey, keyHex);
+        return key;
+    }
+    
+    return new Uint8Array(matches.map(byte => parseInt(byte, 16)));
 };
 
 // Helper to resolve Ethereum address to inbox ID using XMTP V3 API
