@@ -263,7 +263,8 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
         connectedAddress,
         setClient, 
         setConnecting, 
-        setError 
+        setError,
+        reset
     } = useXMTPStore();
 
     const streamRef = useRef<AsyncGenerator | null>(null);
@@ -279,20 +280,25 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
         return embedded || wallets[0];
     }, [wallets]);
 
+    // Helper to restore existing client
+    const restoreExistingClient = useCallback(() => {
+        const existingClient = getGlobalXMTPClient();
+        const wallet = getWallet();
+        if (existingClient && connectedAddress === wallet?.address) {
+            console.log('[XMTP] Restoring existing client for', wallet?.address);
+            setClient(existingClient, wallet?.address);
+            return true;
+        }
+        return false;
+    }, [connectedAddress, getWallet, setClient]);
+
     // ========================================================================
     // CONNECTION METHODS
     // ========================================================================
 
     const connect = useCallback(async () => {
         // Check if already connected with the same wallet
-        const existingClient = getGlobalXMTPClient();
-        const wallet = getWallet();
-        
-        if (existingClient && connectedAddress === wallet?.address) {
-            console.log('[XMTP] Using existing client for', wallet?.address);
-            if (!client) {
-                setClient(existingClient, wallet?.address);
-            }
+        if (restoreExistingClient()) {
             return;
         }
         
@@ -307,8 +313,10 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
         connectionInProgressRef.current = true;
         connectionAttemptedRef.current = true;
 
+        const wallet = getWallet();
         if (!wallet) {
             setError('No wallet available');
+            connectionInProgressRef.current = false;
             return;
         }
 
@@ -425,7 +433,8 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                 // Generate session-unique db path to avoid OPFS lock conflicts
                 let sessionId = sessionStorage.getItem('xmtp-session-id');
                 if (!sessionId) {
-                    sessionId = Date.now().toString();
+                    // Use crypto.randomUUID() for better uniqueness
+                    sessionId = crypto.randomUUID();
                     sessionStorage.setItem('xmtp-session-id', sessionId);
                 }
                 
@@ -543,7 +552,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
         } finally {
             setConnecting(false);
         }
-    }, [authenticated, client, isConnecting, getWallet, connectedAddress, setClient, setConnecting, setError]);
+    }, [authenticated, client, isConnecting, getWallet, connectedAddress, setClient, setConnecting, setError, restoreExistingClient]);
 
     const disconnect = useCallback(() => {
         if (streamRef.current) {
@@ -551,18 +560,18 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
             streamRef.current = null;
         }
         setGlobalXMTPClient(null);
-        useXMTPStore.getState().reset();
+        reset();
         connectionAttemptedRef.current = false;
         logSecurityEvent('XMTP client disconnected');
-    }, []);
+    }, [reset]);
 
     const resetConnection = useCallback(() => {
         connectionAttemptedRef.current = false;
         connectionInProgressRef.current = false;
         connectionRetryCount.current = 0;
         setGlobalXMTPClient(null);
-        useXMTPStore.getState().reset();
-    }, []);
+        reset();
+    }, [reset]);
 
     // ========================================================================
     // CONVERSATION LOADING
@@ -1293,13 +1302,8 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
         // Skip if not authenticated or no wallets
         if (!authenticated || !wallets || wallets.length === 0) return;
         
-        // Check if we have a global client that matches current wallet
-        const wallet = getWallet();
-        const existingClient = getGlobalXMTPClient();
-        
-        if (existingClient && connectedAddress === wallet?.address) {
-            console.log('[XMTP] Restoring existing client from global store');
-            setClient(existingClient, wallet?.address);
+        // Try to restore existing client
+        if (restoreExistingClient()) {
             return;
         }
         
@@ -1308,25 +1312,20 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
             console.log('[XMTP] Auto-connecting...');
             connect();
         }
-    }, [authenticated, wallets, client, isConnecting, connectedAddress, connect, getWallet, setClient]);
+    }, [authenticated, wallets, client, isConnecting, connect, restoreExistingClient]);
 
     // Handle page visibility changes
     useEffect(() => {
         const handleVisibilityChange = () => {
-            if (document.visibilityState === 'visible') {
-                // User returned to tab - check if client is still valid
-                const existingClient = getGlobalXMTPClient();
-                if (existingClient && !client) {
-                    console.log('[XMTP] Restoring client after tab focus');
-                    const wallet = getWallet();
-                    setClient(existingClient, wallet?.address);
-                }
+            if (document.visibilityState === 'visible' && !client) {
+                // User returned to tab - try to restore client
+                restoreExistingClient();
             }
         };
         
         document.addEventListener('visibilitychange', handleVisibilityChange);
         return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-    }, [client, getWallet, setClient]);
+    }, [client, restoreExistingClient]);
 
     // Cleanup on unmount
     useEffect(() => {
