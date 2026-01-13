@@ -1,44 +1,44 @@
-// Stub for @solana/* packages - Privy's optional Solana dependencies
-// This app doesn't use Solana, so we provide empty stubs
+// Virtual module stub for ALL @solana/* and @solana-program/* packages
+// Uses a Proxy to handle any export name dynamically
 
-// @solana/kit exports
-export const getTransactionDecoder = () => {
-    throw new Error('Solana is not supported in this application');
+// Create a proxy that returns throw functions for any property access
+const handler: ProxyHandler<object> = {
+    get(_target, prop) {
+        if (prop === '__esModule') return true;
+        if (prop === 'default') return {};
+        if (typeof prop === 'symbol') return undefined;
+        // Return a stub function that throws
+        return function (..._args: unknown[]) {
+            throw new Error(`Solana is not supported: ${String(prop)}`);
+        };
+    }
 };
 
-export const getBase64Decoder = () => {
-    throw new Error('Solana is not supported in this application');
-};
+// Export a proxy that handles any named export
+const proxy = new Proxy({}, handler);
 
-export const getBase58Encoder = () => {
-    throw new Error('Solana is not supported in this application');
-};
-
-// @solana-program/encoders exports
-export const getStructEncoder = () => {
-    throw new Error('Solana is not supported in this application');
-};
-
-export const getOptionEncoder = () => {
-    throw new Error('Solana is not supported in this application');
-};
-
-export const getAddressEncoder = () => {
-    throw new Error('Solana is not supported in this application');
-};
-
-export const getU32Encoder = () => {
-    throw new Error('Solana is not supported in this application');
-};
-
-export const getU64Encoder = () => {
-    throw new Error('Solana is not supported in this application');
-};
+// Re-export common patterns
+export const getTransactionDecoder = proxy.getTransactionDecoder;
+export const getBase64Decoder = proxy.getBase64Decoder;
+export const getBase58Encoder = proxy.getBase58Encoder;
+export const getStructEncoder = proxy.getStructEncoder;
+export const getOptionEncoder = proxy.getOptionEncoder;
+export const getAddressEncoder = proxy.getAddressEncoder;
+export const getU32Encoder = proxy.getU32Encoder;
+export const getU64Encoder = proxy.getU64Encoder;
+export const getEnumEncoder = proxy.getEnumEncoder;
+export const getArrayEncoder = proxy.getArrayEncoder;
+export const getBytesEncoder = proxy.getBytesEncoder;
+export const getStringEncoder = proxy.getStringEncoder;
+export const getDiscriminatedUnionEncoder = proxy.getDiscriminatedUnionEncoder;
 
 // @solana/web3.js exports
-export const Connection = class { };
-export const PublicKey = class { };
-export const Transaction = class { };
+export const Connection = class Connection { };
+export const PublicKey = class PublicKey { };
+export const Transaction = class Transaction { };
+export const Keypair = class Keypair { };
+export const SystemProgram = {};
+export const LAMPORTS_PER_SOL = 1000000000;
 
-// Export empty defaults for any other imports
-export default {};
+// Default export
+export default proxy;
