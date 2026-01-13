@@ -73,8 +73,13 @@ export default defineConfig({
     resolve: {
         alias: {
             '@': path.resolve(__dirname, './src'),
-            // Stub @solana/kit - Privy's optional Solana dependency
+            // Stub all Solana packages - Privy's optional Solana dependencies
+            // These are not used in this Ethereum-only app
             '@solana/kit': path.resolve(__dirname, './src/solana-kit-stub.ts'),
+            '@solana-program/encoders': path.resolve(__dirname, './src/solana-kit-stub.ts'),
+            '@solana-program/token': path.resolve(__dirname, './src/solana-kit-stub.ts'),
+            '@solana-program/system': path.resolve(__dirname, './src/solana-kit-stub.ts'),
+            '@solana/web3.js': path.resolve(__dirname, './src/solana-kit-stub.ts'),
         },
     },
     define: {
