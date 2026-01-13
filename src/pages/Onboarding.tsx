@@ -52,7 +52,8 @@ export function Onboarding() {
                 }
             } else if (user?.linkedAccounts && user.linkedAccounts.length > 0) {
                 // User is authenticated via passkey but wallet not ready yet
-                // Show identity step - the wallet will be available soon
+                // Passkey users get an embedded wallet created automatically,
+                // so show identity step - the wallet will be available soon
                 setStep('identity');
                 setIsCreating(false);
             }
@@ -272,7 +273,7 @@ export function Onboarding() {
                     >
                         {walletsReady && wallets.length > 0 ? (
                             <IdentitySetup
-                                walletAddress={wallets[0].address}
+                                walletAddress={wallets[0]?.address || ''}
                                 onComplete={handleIdentityComplete}
                             />
                         ) : (
