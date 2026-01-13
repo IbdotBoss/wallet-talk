@@ -529,6 +529,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
         connectionAttemptedRef.current = false;
         connectionInProgressRef.current = false;
         connectionRetryCount.current = 0;
+        setClient(null);
         setError(null);
     }, []);
 

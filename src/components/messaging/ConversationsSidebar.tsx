@@ -160,7 +160,8 @@ export function ConversationsSidebar({
             await connect();
             hapticSuccess();
         } catch (err) {
-            console.error('[ConversationsSidebar] Failed to connect to XMTP:', err);
+            // Error is already handled by the hook's error state
+            console.error('[ConversationsSidebar] XMTP connection failed:', err);
             hapticError();
         } finally {
             setIsConnectingXMTP(false);
