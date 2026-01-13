@@ -228,6 +228,7 @@ interface UseSecureXMTPReturn {
     // Core methods
     connect: () => Promise<void>;
     disconnect: () => void;
+    resetConnection: () => void;
 
     // DM methods
     sendMessage: (peerAddress: string, content: string) => Promise<boolean>;
