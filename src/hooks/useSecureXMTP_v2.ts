@@ -14,6 +14,7 @@ import type { Client, Signer, Conversation, Group } from '@xmtp/browser-sdk';
 import { toBytes } from 'viem'; // Use viem's toBytes like official xmtp.chat
 import { useMessageStore, type Message as StoreMessage, type Conversation as StoreConversation } from '@/store/messageStore';
 import { sanitizeMessage, validateAddress, logSecurityEvent } from '@/lib/SecurityService';
+import { useXMTPStore, getGlobalXMTPClient, setGlobalXMTPClient } from '@/store/xmtpStore';
 
 // App version for XMTP analytics (recommended by XMTP docs)
 const APP_VERSION = 'wallet-talk/1.0.0';
@@ -253,9 +254,18 @@ interface UseSecureXMTPReturn {
 export function useSecureXMTP(): UseSecureXMTPReturn {
     const { authenticated, user } = usePrivy();
     const { wallets } = useWallets();
-    const [client, setClient] = useState<Client | MockClient | null>(null);
-    const [isConnecting, setIsConnecting] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    
+    // Use XMTP store instead of local state
+    const { 
+        client, 
+        isConnecting, 
+        isConnected,
+        error, 
+        connectedAddress,
+        setClient, 
+        setConnecting, 
+        setError 
+    } = useXMTPStore();
 
     const streamRef = useRef<AsyncGenerator | null>(null);
     const connectionAttemptedRef = useRef(false);
@@ -275,6 +285,18 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
     // ========================================================================
 
     const connect = useCallback(async () => {
+        // Check if already connected with the same wallet
+        const existingClient = getGlobalXMTPClient();
+        const wallet = getWallet();
+        
+        if (existingClient && connectedAddress === wallet?.address) {
+            console.log('[XMTP] Using existing client for', wallet?.address);
+            if (!client) {
+                setClient(existingClient, wallet?.address);
+            }
+            return;
+        }
+        
         if (!authenticated || client || isConnecting || connectionAttemptedRef.current) return;
         
         // Prevent concurrent connections - this stops multiple wallet popups
@@ -286,13 +308,12 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
         connectionInProgressRef.current = true;
         connectionAttemptedRef.current = true;
 
-        const wallet = getWallet();
         if (!wallet) {
             setError('No wallet available');
             return;
         }
 
-        setIsConnecting(true);
+        setConnecting(true);
         setError(null);
 
         // MOCK MODE
@@ -301,14 +322,15 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
             try {
                 await new Promise(resolve => setTimeout(resolve, 1000));
                 const mockClient = new MockClient(wallet.address);
-                setClient(mockClient);
+                setClient(mockClient as any, wallet.address);
+                setGlobalXMTPClient(mockClient as any);
                 logSecurityEvent('XMTP Mock client connected', { address: wallet.address });
-                setIsConnecting(false);
+                setConnecting(false);
                 connectionInProgressRef.current = false;
                 return;
             } catch (e) {
                 setError('Mock connection failed');
-                setIsConnecting(false);
+                setConnecting(false);
                 connectionInProgressRef.current = false;
                 return;
             }
@@ -401,11 +423,17 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
 
             // Create client with dev environment
             const createClient = async () => {
-                // TODO: Re-enable OPFS persistence once lock conflict issues are resolved
-                // OPFS currently causes "NoModificationAllowedError" when multiple tabs or
-                // incomplete sessions leave file handles open
-                // const dbPath = `xmtp-${wallet.address.toLowerCase()}`;
-                // const dbEncryptionKey = await getOrCreateDbEncryptionKey(wallet.address);
+                // Generate session-unique db path to avoid OPFS lock conflicts
+                let sessionId = sessionStorage.getItem('xmtp-session-id');
+                if (!sessionId) {
+                    sessionId = Date.now().toString();
+                    sessionStorage.setItem('xmtp-session-id', sessionId);
+                }
+                
+                const dbPath = `xmtp-${wallet.address.toLowerCase()}-${sessionId}`;
+                const dbEncryptionKey = await getOrCreateDbEncryptionKey(wallet.address);
+                
+                console.log('[XMTP] Using dbPath:', dbPath);
 
                 try {
                     console.log('[XMTP] Calling Client.create() NOW...');
@@ -416,8 +444,9 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                         env: 'dev',
                         appVersion: APP_VERSION,
                         loggingLevel: 'debug',
-                        // TODO: Re-enable persistence once OPFS lock issues are resolved
-                        disablePersistence: true,
+                        dbPath,
+                        dbEncryptionKey,
+                        // Persistence is now enabled with session-unique path
                     });
                     console.log('[XMTP] Client.create() succeeded!');
                     return client;
@@ -437,8 +466,8 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                                 env: 'dev',
                                 appVersion: APP_VERSION,
                                 loggingLevel: 'debug',
-                                // TODO: Re-enable persistence once OPFS lock issues are resolved
-                                disablePersistence: true,
+                                dbPath,
+                                dbEncryptionKey,
                                 disableAutoRegister: true,
                             });
 
@@ -479,7 +508,9 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
             console.log('[XMTP] Inbox ID:', xmtpClient.inboxId);
             connectionRetryCount.current = 0; // Reset retry count on success
 
-            setClient(xmtpClient);
+            // Store client globally and in store
+            setGlobalXMTPClient(xmtpClient);
+            setClient(xmtpClient, wallet.address);
             logSecurityEvent('XMTP V3 client connected', { address: wallet.address });
 
             // Load existing conversations and start streaming
@@ -498,7 +529,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                 setError(`Connection failed, retrying... (${connectionRetryCount.current}/${MAX_CONNECTION_RETRIES})`);
                 connectionAttemptedRef.current = false;
                 connectionInProgressRef.current = false;
-                setIsConnecting(false);
+                setConnecting(false);
                 // Wait a bit before retrying
                 setTimeout(() => {
                     connect();
@@ -511,16 +542,17 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
             connectionInProgressRef.current = false;
             logSecurityEvent('XMTP connection failed', { error: message, retries: connectionRetryCount.current });
         } finally {
-            setIsConnecting(false);
+            setConnecting(false);
         }
-    }, [authenticated, client, isConnecting, getWallet]);
+    }, [authenticated, client, isConnecting, getWallet, connectedAddress, setClient, setConnecting, setError]);
 
     const disconnect = useCallback(() => {
         if (streamRef.current) {
             streamRef.current.return?.(undefined);
             streamRef.current = null;
         }
-        setClient(null);
+        setGlobalXMTPClient(null);
+        useXMTPStore.getState().reset();
         connectionAttemptedRef.current = false;
         logSecurityEvent('XMTP client disconnected');
     }, []);
@@ -529,8 +561,8 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
         connectionAttemptedRef.current = false;
         connectionInProgressRef.current = false;
         connectionRetryCount.current = 0;
-        setClient(null);
-        setError(null);
+        setGlobalXMTPClient(null);
+        useXMTPStore.getState().reset();
     }, []);
 
     // ========================================================================
@@ -1252,16 +1284,50 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
     );
 
     // ========================================================================
-    // AUTO-CONNECT EFFECT - DISABLED
+    // AUTO-CONNECT EFFECT
     // ========================================================================
-    // Auto-connect removed to prevent race conditions with Privy auth
-    // XMTP connection is now triggered manually after identity setup
+    
+    useEffect(() => {
+        // Skip if already connected or connecting
+        if (client || isConnecting) return;
+        
+        // Skip if not authenticated or no wallets
+        if (!authenticated || !wallets || wallets.length === 0) return;
+        
+        // Check if we have a global client that matches current wallet
+        const wallet = getWallet();
+        const existingClient = getGlobalXMTPClient();
+        
+        if (existingClient && connectedAddress === wallet?.address) {
+            console.log('[XMTP] Restoring existing client from global store');
+            setClient(existingClient, wallet?.address);
+            return;
+        }
+        
+        // Only auto-connect if we don't have a connection attempt in progress
+        if (!connectionAttemptedRef.current) {
+            console.log('[XMTP] Auto-connecting...');
+            connect();
+        }
+    }, [authenticated, wallets, client, isConnecting, connectedAddress, connect, getWallet, setClient]);
 
-    // useEffect(() => {
-    //     if (authenticated && wallets && wallets.length > 0 && !client && !isConnecting && !connectionAttemptedRef.current) {
-    //         connect();
-    //     }
-    // }, [authenticated, wallets, client, isConnecting, connect]);
+    // Handle page visibility changes
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                // User returned to tab - check if client is still valid
+                const existingClient = getGlobalXMTPClient();
+                if (existingClient && !client) {
+                    console.log('[XMTP] Restoring client after tab focus');
+                    const wallet = getWallet();
+                    setClient(existingClient, wallet?.address);
+                }
+            }
+        };
+        
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }, [client, getWallet, setClient]);
 
     // Cleanup on unmount
     useEffect(() => {
