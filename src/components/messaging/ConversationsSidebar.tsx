@@ -15,11 +15,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useMessageStore, type Conversation } from '@/store/messageStore';
 import { useIdentityStore } from '@/store/identityStore';
 import { useSecureXMTP } from '@/hooks/useSecureXMTP_v2';
+import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { getHandleForAddress } from '@/lib/UsernameGenerator';
 import { truncateAddress, validateAddress } from '@/lib/SecurityService';
 import { triggerHaptic, hapticSuccess, hapticError } from '@/lib/haptics';
 import { LiquidGlassAvatar } from '@/components/ui/LiquidGlassAvatar';
 import { CreateGroupModal } from '@/components/messaging/CreateGroupModal';
+import { ShimmerButtonSimple } from '@/components/ui/shimmer-button-simple';
 
 interface ConversationsSidebarProps {
     onSelectConversation: (addressOrTopic: string, type?: 'dm' | 'group') => void;
@@ -33,7 +35,9 @@ export function ConversationsSidebar({
     const navigate = useNavigate();
     const { conversations, isLoading, activeFilter, setFilter, getFilteredConversations } = useMessageStore();
     const { identity } = useIdentityStore();
-    const { isConnected, isConnecting, startConversation } = useSecureXMTP();
+    const { isConnected, isConnecting, startConversation, connect, error, resetConnection } = useSecureXMTP();
+    const { authenticated } = usePrivy();
+    const { wallets } = useWallets();
 
     const [searchQuery, setSearchQuery] = useState('');
     const [showNewChat, setShowNewChat] = useState(false);
@@ -41,6 +45,7 @@ export function ConversationsSidebar({
     const [newAddress, setNewAddress] = useState('');
     const [isStarting, setIsStarting] = useState(false);
     const [inputError, setInputError] = useState<string | null>(null);
+    const [isConnectingXMTP, setIsConnectingXMTP] = useState(false);
 
     // Mock pinned state (in production, would come from store)
     const [pinnedAddresses] = useState<Set<string>>(new Set());
@@ -148,6 +153,28 @@ export function ConversationsSidebar({
         setFilter(filter);
     };
 
+    const handleConnectXMTP = async () => {
+        triggerHaptic('medium');
+        setIsConnectingXMTP(true);
+        try {
+            await connect();
+            hapticSuccess();
+        } catch (err) {
+            // Error is already handled by the hook's error state
+            console.error('[ConversationsSidebar] XMTP connection failed:', err);
+            hapticError();
+        } finally {
+            setIsConnectingXMTP(false);
+        }
+    };
+
+    const handleRetryConnection = () => {
+        // resetConnection is synchronous and resets state/refs immediately,
+        // so there's no race condition with the subsequent connect call
+        resetConnection();
+        handleConnectXMTP();
+    };
+
     return (
         <div className="h-full flex flex-col bg-white relative">
             {/* Header */}
@@ -235,13 +262,83 @@ export function ConversationsSidebar({
                 {/* Connection Status */}
                 {!isConnected && (
                     <div className="mt-3 flex items-center gap-2 text-sm">
-                        <div className={`w-2 h-2 rounded-full ${isConnecting ? 'bg-yellow-400 animate-pulse' : 'bg-gray-400'}`} />
+                        <div className={`w-2 h-2 rounded-full ${isConnecting || isConnectingXMTP ? 'bg-yellow-400 animate-pulse' : 'bg-gray-400'}`} />
                         <span className="text-gray-500">
-                            {isConnecting ? 'Connecting to XMTP...' : 'Offline'}
+                            {isConnecting || isConnectingXMTP ? 'Connecting to XMTP...' : 'Offline'}
                         </span>
                     </div>
                 )}
             </div>
+
+            {/* XMTP Connection Card - Shows when not connected */}
+            {!isConnected && authenticated && wallets.length > 0 && (
+                <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mx-4 mt-4 p-6 bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl border border-gray-200"
+                >
+                    <div className="flex items-start gap-4">
+                        <div className="flex-shrink-0 w-12 h-12 rounded-full bg-white flex items-center justify-center shadow-sm">
+                            <svg className="w-6 h-6 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                            </svg>
+                        </div>
+                        <div className="flex-1">
+                            <h3 className="text-lg font-semibold text-gray-900 mb-1">
+                                Connect to XMTP
+                            </h3>
+                            <p className="text-sm text-gray-600 mb-4">
+                                Enable secure messaging by connecting to the XMTP network. This will prompt you to sign a message.
+                            </p>
+                            
+                            {error && (
+                                <motion.div
+                                    initial={{ opacity: 0, height: 0 }}
+                                    animate={{ opacity: 1, height: 'auto' }}
+                                    className="mb-4 p-3 bg-red-50 border border-red-100 rounded-xl"
+                                >
+                                    <div className="flex items-start gap-2">
+                                        <svg className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
+                                        <div className="flex-1">
+                                            <p className="text-xs text-red-700 font-medium">{error}</p>
+                                        </div>
+                                    </div>
+                                </motion.div>
+                            )}
+
+                            <ShimmerButtonSimple
+                                onClick={error ? handleRetryConnection : handleConnectXMTP}
+                                disabled={isConnectingXMTP || isConnecting}
+                                className="w-full"
+                            >
+                                {isConnectingXMTP || isConnecting ? (
+                                    <span className="flex items-center justify-center gap-2">
+                                        <motion.div
+                                            className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full"
+                                            animate={{ rotate: 360 }}
+                                            transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                                        />
+                                        Connecting...
+                                    </span>
+                                ) : error ? (
+                                    'Retry Connection'
+                                ) : (
+                                    'Connect to XMTP'
+                                )}
+                            </ShimmerButtonSimple>
+
+                            <p className="text-xs text-gray-500 mt-3 flex items-center gap-1">
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                </svg>
+                                End-to-end encrypted messaging
+                            </p>
+                        </div>
+                    </div>
+                </motion.div>
+            )}
 
             {/* Conversation List */}
             <div className="flex-1 overflow-y-auto">
