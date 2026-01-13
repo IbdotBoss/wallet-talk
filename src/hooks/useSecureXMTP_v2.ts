@@ -274,13 +274,13 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
     // ========================================================================
 
     const connect = useCallback(async () => {
+        if (!authenticated || client || isConnecting || connectionAttemptedRef.current) return;
+        
         // Prevent concurrent connections - this stops multiple wallet popups
         if (connectionInProgressRef.current) {
             console.log('[XMTP] Connection already in progress, skipping...');
             return;
         }
-        
-        if (!authenticated || client || isConnecting || connectionAttemptedRef.current) return;
         
         connectionInProgressRef.current = true;
         connectionAttemptedRef.current = true;
@@ -400,15 +400,11 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
 
             // Create client with dev environment
             const createClient = async () => {
-                // Temporarily disable OPFS persistence to avoid lock errors
-                // OPFS causes "NoModificationAllowedError" when multiple tabs or
+                // TODO: Re-enable OPFS persistence once lock conflict issues are resolved
+                // OPFS currently causes "NoModificationAllowedError" when multiple tabs or
                 // incomplete sessions leave file handles open
                 // const dbPath = `xmtp-${wallet.address.toLowerCase()}`;
-                // console.log('[XMTP] Using dbPath:', dbPath);
-
-                // Get or create database encryption key for security
                 // const dbEncryptionKey = await getOrCreateDbEncryptionKey(wallet.address);
-                // console.log('[XMTP] Database encryption key prepared');
 
                 try {
                     console.log('[XMTP] Calling Client.create() NOW...');
@@ -419,10 +415,8 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                         env: 'dev',
                         appVersion: APP_VERSION,
                         loggingLevel: 'debug',
-                        // Temporarily disable OPFS persistence to avoid lock errors
+                        // TODO: Re-enable persistence once OPFS lock issues are resolved
                         disablePersistence: true,
-                        // dbPath,
-                        // dbEncryptionKey,
                     });
                     console.log('[XMTP] Client.create() succeeded!');
                     return client;
@@ -442,10 +436,8 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                                 env: 'dev',
                                 appVersion: APP_VERSION,
                                 loggingLevel: 'debug',
-                                // Temporarily disable OPFS persistence to avoid lock errors
+                                // TODO: Re-enable persistence once OPFS lock issues are resolved
                                 disablePersistence: true,
-                                // dbPath,
-                                // dbEncryptionKey,
                                 disableAutoRegister: true,
                             });
 
