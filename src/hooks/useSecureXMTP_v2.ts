@@ -885,6 +885,11 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                 await conversation.send(sanitized);
                 console.log('[XMTP] Message sent successfully');
                 
+                // Note: The optimistic message will remain with its pending-* ID.
+                // When the real message arrives via stream, it will have a different ID.
+                // This creates a brief duplicate until the optimistic message can be reconciled.
+                // TODO: Implement message reconciliation to replace optimistic messages with real ones.
+                
                 return true;
             } catch (err) {
                 console.error('[XMTP] Send message error:', err);
@@ -1309,6 +1314,11 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                 // Actually send the message
                 await (conversation as any).send(sanitized);
                 console.log('[XMTP] Group message sent successfully');
+                
+                // Note: The optimistic message will remain with its pending-* ID.
+                // When the real message arrives via stream, it will have a different ID.
+                // This creates a brief duplicate until the optimistic message can be reconciled.
+                // TODO: Implement message reconciliation to replace optimistic messages with real ones.
                 
                 return true;
             } catch (err) {
