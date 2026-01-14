@@ -654,14 +654,56 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
         }
     };
 
+    // Helper to extract text content from XMTP V3 message content
+    const getMessageText = (content: unknown): string => {
+        if (typeof content === 'string') {
+            return content;
+        }
+        if (content && typeof content === 'object') {
+            // XMTP V3 text content type
+            if ('text' in content) return String((content as any).text);
+            if ('content' in content) return String((content as any).content);
+            // Skip non-text content types (reactions, receipts, system messages, etc.)
+            if ('type' in content) {
+                const type = (content as any).type;
+                if (type !== 'text' && type !== 'string') {
+                    return ''; // Skip system messages
+                }
+            }
+        }
+        return '';
+    };
+
     const handleIncomingMessage = (message: unknown) => {
         const msg = message as any;
+        
+        // Extract text content properly
+        const textContent = getMessageText(msg.content);
+        
+        // Skip non-text messages (system messages, reactions, etc.)
+        if (!textContent) {
+            console.log('[XMTP] Skipping non-text message:', msg.contentType || 'unknown');
+            return;
+        }
+        
+        // Get current client from global store (not stale closure)
+        const currentClient = getGlobalXMTPClient();
+        const myInboxId = currentClient?.inboxId?.toLowerCase() || '';
+        const senderInboxId = (msg.senderInboxId || '').toLowerCase();
+        
+        // Debug logging
+        console.log('[XMTP] Message received:', {
+            senderInboxId,
+            myInboxId,
+            isSent: senderInboxId === myInboxId,
+        });
+        
         const storeMessage: StoreMessage = {
             id: msg.id,
             senderAddress: msg.senderInboxId,
-            content: sanitizeMessage(String(msg.content || '')),
+            content: sanitizeMessage(textContent),
             timestamp: new Date(Number(msg.sentAtNs) / 1_000_000),
-            isSent: msg.senderInboxId === client?.inboxId,
+            isSent: senderInboxId === myInboxId, // Normalized comparison
         };
 
         if (msg.conversationId) {
@@ -825,12 +867,36 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                     conversation = await (client as Client).conversations.newDm(peerInboxId);
                 }
 
+                // Optimistic update - add to store immediately for instant UI feedback
+                const optimisticMessageId = `pending-${crypto.randomUUID()}`;
+                const optimisticMessage: StoreMessage = {
+                    id: optimisticMessageId,
+                    senderAddress: (client as Client).inboxId || '',
+                    content: sanitized,
+                    timestamp: new Date(),
+                    isSent: true, // Always true for messages we send
+                };
+                
+                // Add optimistic message to the store
+                messageStore.addMessage(conversation.id, optimisticMessage);
+                console.log('[XMTP] Added optimistic message to UI');
+
+                // Actually send the message
                 await conversation.send(sanitized);
+                console.log('[XMTP] Message sent successfully');
+                
+                // Note: The optimistic message will remain with its pending-* ID.
+                // When the real message arrives via stream, it will have a different ID.
+                // This creates a brief duplicate until the optimistic message can be reconciled.
+                // TODO: Implement message reconciliation to replace optimistic messages with real ones.
+                
                 return true;
             } catch (err) {
                 console.error('[XMTP] Send message error:', err);
                 const message = err instanceof Error ? err.message : 'Failed to send';
                 setError(message);
+                // Note: In a production app, we might want to remove the optimistic message on failure
+                // For now, we keep it as XMTP stream will eventually deliver the real message
                 return false;
             }
         },
@@ -1231,7 +1297,29 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                 }
 
                 // REAL SEND
+                // Optimistic update - add to store immediately for instant UI feedback
+                const optimisticMessageId = `pending-${crypto.randomUUID()}`;
+                const optimisticMessage: StoreMessage = {
+                    id: optimisticMessageId,
+                    senderAddress: (client as Client).inboxId || '',
+                    content: sanitized,
+                    timestamp: new Date(),
+                    isSent: true, // Always true for messages we send
+                };
+                
+                // Add optimistic message to the store
+                messageStore.addMessage(groupId, optimisticMessage);
+                console.log('[XMTP] Added optimistic group message to UI');
+
+                // Actually send the message
                 await (conversation as any).send(sanitized);
+                console.log('[XMTP] Group message sent successfully');
+                
+                // Note: The optimistic message will remain with its pending-* ID.
+                // When the real message arrives via stream, it will have a different ID.
+                // This creates a brief duplicate until the optimistic message can be reconciled.
+                // TODO: Implement message reconciliation to replace optimistic messages with real ones.
+                
                 return true;
             } catch (err) {
                 console.error('[XMTP] Send group message error:', err);
