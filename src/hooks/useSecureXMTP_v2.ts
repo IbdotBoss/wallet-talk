@@ -868,7 +868,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                 }
 
                 // Optimistic update - add to store immediately for instant UI feedback
-                const optimisticMessageId = `pending-${Date.now()}`;
+                const optimisticMessageId = `pending-${crypto.randomUUID()}`;
                 const optimisticMessage: StoreMessage = {
                     id: optimisticMessageId,
                     senderAddress: (client as Client).inboxId || '',
@@ -1293,7 +1293,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
 
                 // REAL SEND
                 // Optimistic update - add to store immediately for instant UI feedback
-                const optimisticMessageId = `pending-${Date.now()}`;
+                const optimisticMessageId = `pending-${crypto.randomUUID()}`;
                 const optimisticMessage: StoreMessage = {
                     id: optimisticMessageId,
                     senderAddress: (client as Client).inboxId || '',
