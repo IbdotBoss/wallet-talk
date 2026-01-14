@@ -51,13 +51,13 @@ async function loadXMTPSDK() {
 const getOrCreateDbEncryptionKey = async (address: string): Promise<Uint8Array> => {
     const storageKey = `xmtp-db-key-${address.toLowerCase()}`;
     let keyHex = localStorage.getItem(storageKey);
-    
+
     if (!keyHex) {
         const key = crypto.getRandomValues(new Uint8Array(32));
         keyHex = Array.from(key).map(b => b.toString(16).padStart(2, '0')).join('');
         localStorage.setItem(storageKey, keyHex);
     }
-    
+
     // Convert hex string to Uint8Array
     const matches = keyHex.match(/.{2}/g);
     if (!matches) {
@@ -67,7 +67,7 @@ const getOrCreateDbEncryptionKey = async (address: string): Promise<Uint8Array> 
         localStorage.setItem(storageKey, keyHex);
         return key;
     }
-    
+
     return new Uint8Array(matches.map(byte => parseInt(byte, 16)));
 };
 
@@ -254,15 +254,15 @@ interface UseSecureXMTPReturn {
 export function useSecureXMTP(): UseSecureXMTPReturn {
     const { authenticated, user } = usePrivy();
     const { wallets } = useWallets();
-    
+
     // Use XMTP store instead of local state
-    const { 
-        client, 
-        isConnecting, 
-        error, 
+    const {
+        client,
+        isConnecting,
+        error,
         connectedAddress,
-        setClient, 
-        setConnecting, 
+        setClient,
+        setConnecting,
         setError,
         reset
     } = useXMTPStore();
@@ -301,15 +301,15 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
         if (restoreExistingClient()) {
             return;
         }
-        
+
         if (!authenticated || client || isConnecting || connectionAttemptedRef.current) return;
-        
+
         // Prevent concurrent connections - this stops multiple wallet popups
         if (connectionInProgressRef.current) {
             console.log('[XMTP] Connection already in progress, skipping...');
             return;
         }
-        
+
         connectionInProgressRef.current = true;
         connectionAttemptedRef.current = true;
 
@@ -430,31 +430,24 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
 
             // Create client with dev environment
             const createClient = async () => {
-                // Generate session-unique db path to avoid OPFS lock conflicts
-                let sessionId = sessionStorage.getItem('xmtp-session-id');
-                if (!sessionId) {
-                    // Use crypto.randomUUID() for better uniqueness
-                    sessionId = crypto.randomUUID();
-                    sessionStorage.setItem('xmtp-session-id', sessionId);
-                }
-                
-                const dbPath = `xmtp-${wallet.address.toLowerCase()}-${sessionId}`;
-                const dbEncryptionKey = await getOrCreateDbEncryptionKey(wallet.address);
-                
-                console.log('[XMTP] Using dbPath:', dbPath);
+                // NOTE: OPFS persistence is DISABLED due to browser limitations
+                // - Browser SDK's SyncAccessHandle Pool VFS doesn't support multiple connections
+                // - dbEncryptionKey is ignored in browser environments anyway
+                // - Session-unique paths don't help because sessionStorage persists across reloads
+                // See: https://docs.xmtp.org/chat-apps/core-messaging/create-a-client
 
                 try {
                     console.log('[XMTP] Calling Client.create() NOW...');
                     console.log('[XMTP] Signer type:', signer.type);
                     console.log('[XMTP] Signer identifier:', signer.getIdentifier());
+                    console.log('[XMTP] Using disablePersistence: true (OPFS not supported in browser)');
 
                     const client = await SDKClient.create(signer, {
                         env: 'dev',
                         appVersion: APP_VERSION,
                         loggingLevel: 'debug',
-                        dbPath,
-                        dbEncryptionKey,
-                        // Persistence is now enabled with session-unique path
+                        // Disable OPFS persistence - browser SDK has lock conflict issues
+                        disablePersistence: true,
                     });
                     console.log('[XMTP] Client.create() succeeded!');
                     return client;
@@ -474,8 +467,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                                 env: 'dev',
                                 appVersion: APP_VERSION,
                                 loggingLevel: 'debug',
-                                dbPath,
-                                dbEncryptionKey,
+                                disablePersistence: true,
                                 disableAutoRegister: true,
                             });
 
@@ -524,7 +516,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
             // Load existing conversations and start streaming
             await loadConversations(xmtpClient);
             startMessageStream(xmtpClient);
-            
+
             connectionInProgressRef.current = false;
         } catch (err) {
             console.error('[XMTP] Connection Error:', err);
@@ -728,13 +720,13 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                 // V3 API: Resolve address to inbox ID before creating DM
                 console.log('[XMTP] Resolving address to inbox ID...');
                 const peerInboxId = await getInboxIdFromAddress(client as Client, peerAddress);
-                
+
                 if (!peerInboxId) {
                     console.log('[XMTP] Failed to resolve inbox ID for address:', peerAddress);
                     setError('Could not resolve inbox ID for this address');
                     return null;
                 }
-                
+
                 console.log('[XMTP] Resolved inbox ID:', peerInboxId);
 
                 // Create or get existing DM using inbox ID
@@ -814,7 +806,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
             try {
                 // V3 API: Resolve address to inbox ID
                 const peerInboxId = await getInboxIdFromAddress(client as Client, peerAddress);
-                
+
                 if (!peerInboxId) {
                     setError('Could not resolve inbox ID for this address');
                     return false;
@@ -904,7 +896,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                 // V3 API: Resolve all member addresses to inbox IDs
                 console.log('[XMTP] Resolving member addresses to inbox IDs...');
                 const inboxIds: string[] = [];
-                
+
                 for (const address of memberAddresses) {
                     const inboxId = await getInboxIdFromAddress(client as Client, address);
                     if (inboxId) {
@@ -1294,19 +1286,19 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
     // ========================================================================
     // AUTO-CONNECT EFFECT
     // ========================================================================
-    
+
     useEffect(() => {
         // Skip if already connected or connecting
         if (client || isConnecting) return;
-        
+
         // Skip if not authenticated or no wallets
         if (!authenticated || !wallets || wallets.length === 0) return;
-        
+
         // Try to restore existing client
         if (restoreExistingClient()) {
             return;
         }
-        
+
         // Only auto-connect if we don't have a connection attempt in progress
         if (!connectionAttemptedRef.current) {
             console.log('[XMTP] Auto-connecting...');
@@ -1322,7 +1314,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                 restoreExistingClient();
             }
         };
-        
+
         document.addEventListener('visibilitychange', handleVisibilityChange);
         return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
     }, [client, restoreExistingClient]);
