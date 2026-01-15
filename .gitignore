@@ -38,4 +38,3 @@ dev-dist/
 *.tsbuildinfo
 .vercel
 
-.agent

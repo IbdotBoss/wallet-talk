@@ -21,6 +21,7 @@ import { getHandleForAddress } from '@/lib/UsernameGenerator';
 import { truncateAddress, validateAddress } from '@/lib/SecurityService';
 import { triggerHaptic, hapticSuccess, hapticError } from '@/lib/haptics';
 import { fetchAndStorePeerENS } from '@/lib/ProfileService';
+import { resolveENSAddress } from '@/lib/ENSService';
 import { LiquidGlassAvatar } from '@/components/ui/LiquidGlassAvatar';
 import { CreateGroupModal } from '@/components/messaging/CreateGroupModal';
 import { ShimmerButtonSimple } from '@/components/ui/shimmer-button-simple';
@@ -121,21 +122,46 @@ export function ConversationsSidebar({
     };
 
     const handleStartConversation = async () => {
-        if (!validateAddress(newAddress)) {
-            setInputError('Please enter a valid Ethereum address');
+        const input = newAddress.trim();
+
+        // Check if input is an ENS name (ends with .eth or similar TLDs)
+        const isENSName = /\.(eth|xyz|app|id|art|dao|nft|lens|cb\.id)$/i.test(input);
+
+        let addressToUse = input;
+
+        if (isENSName) {
+            // Resolve ENS name to address
+            setIsStarting(true);
+            try {
+                const resolvedAddress = await resolveENSAddress(input);
+                if (!resolvedAddress) {
+                    setInputError(`Could not resolve ${input}`);
+                    hapticError();
+                    setIsStarting(false);
+                    return;
+                }
+                addressToUse = resolvedAddress;
+            } catch (err) {
+                setInputError(`Failed to resolve ${input}`);
+                hapticError();
+                setIsStarting(false);
+                return;
+            }
+        } else if (!validateAddress(input)) {
+            setInputError('Please enter a valid Ethereum address or ENS name');
             hapticError();
             return;
         }
 
         setIsStarting(true);
         try {
-            const conversation = await startConversation(newAddress);
+            const conversation = await startConversation(addressToUse);
             if (conversation) {
                 hapticSuccess();
                 setShowNewChat(false);
-                onSelectConversation(newAddress, 'dm');
+                onSelectConversation(addressToUse, 'dm');
             } else {
-                setInputError('Failed to start conversation');
+                setInputError('Failed to start conversation. User may not be on XMTP.');
                 hapticError();
             }
         } catch {
@@ -484,7 +510,7 @@ export function ConversationsSidebar({
                                         setNewAddress(e.target.value);
                                         setInputError(null);
                                     }}
-                                    placeholder="Enter wallet address (0x...)"
+                                    placeholder="Address (0x...) or ENS (name.eth)"
                                     className="w-full pl-12 pr-4 py-4 bg-gray-50 border border-gray-200 rounded-2xl text-gray-900 placeholder-gray-400 focus:border-gray-300 focus:bg-white focus:outline-none focus:ring-0 transition-all text-[15px]"
                                     autoFocus
                                 />
