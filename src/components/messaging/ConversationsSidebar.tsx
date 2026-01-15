@@ -181,7 +181,7 @@ export function ConversationsSidebar({
             <div className="px-4 py-4 border-b border-gray-100">
                 <div className="flex items-center justify-between mb-4">
                     <div>
-                        <h1 className="text-2xl font-bold text-gray-900">Messages</h1>
+                        <h1 className="text-2xl font-bold text-gray-900" style={{ fontFamily: 'Sora, sans-serif' }}>Messages</h1>
                         {userDisplayName && (
                             <p className="text-sm text-gray-500">{userDisplayName}</p>
                         )}
@@ -290,7 +290,7 @@ export function ConversationsSidebar({
                             <p className="text-sm text-gray-600 mb-4">
                                 Enable secure messaging by connecting to the XMTP network. This will prompt you to sign a message.
                             </p>
-                            
+
                             {error && (
                                 <motion.div
                                     initial={{ opacity: 0, height: 0 }}
@@ -438,62 +438,90 @@ export function ConversationsSidebar({
             <AnimatePresence>
                 {showNewChat && (
                     <motion.div
-                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                     >
                         <motion.div
-                            className="bg-white rounded-2xl p-6 w-full max-w-md mx-4 shadow-xl"
-                            initial={{ scale: 0.95, opacity: 0 }}
-                            animate={{ scale: 1, opacity: 1 }}
-                            exit={{ scale: 0.95, opacity: 0 }}
+                            className="bg-white rounded-3xl p-8 w-full max-w-md mx-4 shadow-2xl"
+                            initial={{ scale: 0.95, opacity: 0, y: 20 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            exit={{ scale: 0.95, opacity: 0, y: 20 }}
+                            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
                         >
-                            <div className="flex items-center justify-between mb-4">
-                                <h2 className="text-xl font-bold text-gray-900">New Conversation</h2>
+                            <div className="flex items-center justify-between mb-6">
+                                <div>
+                                    <h2 className="text-2xl font-semibold text-gray-900" style={{ fontFamily: 'Sora, sans-serif' }}>
+                                        New Message
+                                    </h2>
+                                    <p className="text-gray-500 text-sm mt-1">
+                                        Start a secure conversation
+                                    </p>
+                                </div>
                                 <button
                                     onClick={() => setShowNewChat(false)}
-                                    className="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center"
+                                    className="w-10 h-10 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors"
                                 >
-                                    <svg className="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                                     </svg>
                                 </button>
                             </div>
 
-                            <p className="text-gray-500 text-sm mb-4">
-                                Enter an Ethereum address to start a secure conversation.
-                            </p>
-
-                            <input
-                                type="text"
-                                value={newAddress}
-                                onChange={(e) => {
-                                    setNewAddress(e.target.value);
-                                    setInputError(null);
-                                }}
-                                placeholder="0x..."
-                                className="w-full px-4 py-3 bg-gray-100 border-0 rounded-xl text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-black mb-3"
-                                autoFocus
-                            />
+                            <div className="relative mb-6">
+                                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
+                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 12a2.25 2.25 0 0 0-2.25-2.25H15a3 3 0 1 1-6 0H5.25A2.25 2.25 0 0 0 3 12m18 0v6a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 18v-6m18 0V9M3 12V9m18 0a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 9m18 0V6a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 6v3" />
+                                    </svg>
+                                </div>
+                                <input
+                                    type="text"
+                                    value={newAddress}
+                                    onChange={(e) => {
+                                        setNewAddress(e.target.value);
+                                        setInputError(null);
+                                    }}
+                                    placeholder="Enter wallet address (0x...)"
+                                    className="w-full pl-12 pr-4 py-4 bg-gray-50 border border-gray-200 rounded-2xl text-gray-900 placeholder-gray-400 focus:border-gray-300 focus:bg-white focus:outline-none focus:ring-0 transition-all text-[15px]"
+                                    autoFocus
+                                />
+                            </div>
 
                             {inputError && (
-                                <p className="text-red-500 text-sm mb-3">{inputError}</p>
+                                <div className="flex items-center gap-2 mb-4 p-3 bg-red-50 border border-red-100 rounded-xl">
+                                    <svg className="w-4 h-4 text-red-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    <p className="text-red-600 text-sm">{inputError}</p>
+                                </div>
                             )}
 
                             <div className="flex gap-3">
                                 <button
                                     onClick={() => setShowNewChat(false)}
-                                    className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+                                    className="flex-1 py-3.5 rounded-xl border border-gray-200 text-gray-700 font-medium hover:bg-gray-50 active:scale-[0.98] transition-all"
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     onClick={handleStartConversation}
                                     disabled={isStarting || !newAddress}
-                                    className="flex-1 py-3 rounded-xl bg-black text-white font-medium hover:bg-gray-800 disabled:opacity-50 transition-colors"
+                                    className="flex-1 py-3.5 rounded-xl bg-gradient-to-br from-gray-800 to-black text-white font-medium hover:shadow-lg hover:shadow-gray-900/20 disabled:opacity-40 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                                 >
-                                    {isStarting ? 'Starting...' : 'Start Chat'}
+                                    {isStarting ? (
+                                        <>
+                                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                            Starting...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                            </svg>
+                                            Start Chat
+                                        </>
+                                    )}
                                 </button>
                             </div>
                         </motion.div>

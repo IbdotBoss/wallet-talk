@@ -71,7 +71,7 @@ html {
   html {
     scroll-behavior: auto;
   }
-  
+
   *,
   *::before,
   *::after {
@@ -82,7 +82,7 @@ html {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', system-ui, sans-serif;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   background-color: var(--color-bg);
   color: var(--color-text-primary);
   line-height: 1.47059;
@@ -499,6 +499,7 @@ textarea {
 }
 
 @keyframes pulse-dot {
+
   0%,
   100% {
     opacity: 0.5;
@@ -592,7 +593,9 @@ textarea {
 }
 
 @keyframes breathing {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: scale(1);
     opacity: 1;
   }
@@ -604,7 +607,9 @@ textarea {
 }
 
 @keyframes float {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: translateY(0);
   }
 
@@ -675,6 +680,7 @@ textarea {
     --chart-5: 27 87% 67%;
     --radius: 0.5rem;
   }
+
   .dark {
     --background: 0 0% 3.9%;
     --foreground: 0 0% 98%;
@@ -709,6 +715,7 @@ textarea {
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground;
   }

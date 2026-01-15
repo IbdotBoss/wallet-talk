@@ -154,28 +154,32 @@ export function CreateGroupModal({ isOpen, onClose, onGroupCreated }: CreateGrou
     return (
         <AnimatePresence>
             <motion.div
-                className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+                className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 onClick={handleClose}
             >
                 <motion.div
-                    className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden"
-                    initial={{ scale: 0.9, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    exit={{ scale: 0.9, opacity: 0 }}
+                    className="w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden"
+                    initial={{ scale: 0.95, opacity: 0, y: 20 }}
+                    animate={{ scale: 1, opacity: 1, y: 0 }}
+                    exit={{ scale: 0.95, opacity: 0, y: 20 }}
+                    transition={{ type: 'spring', damping: 25, stiffness: 300 }}
                     onClick={(e) => e.stopPropagation()}
                 >
                     {/* Header */}
-                    <div className="px-6 py-4 border-b border-gray-100">
+                    <div className="px-8 py-6 border-b border-gray-100">
                         <div className="flex items-center justify-between">
-                            <h2 className="text-xl font-semibold text-gray-900">New Group</h2>
+                            <div>
+                                <h2 className="text-2xl font-semibold text-gray-900" style={{ fontFamily: 'Sora, sans-serif' }}>New Group</h2>
+                                <p className="text-gray-500 text-sm mt-1">Create a group conversation</p>
+                            </div>
                             <button
                                 onClick={handleClose}
-                                className="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors"
+                                className="w-10 h-10 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors"
                             >
-                                <svg className="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                                 </svg>
                             </button>
@@ -183,7 +187,7 @@ export function CreateGroupModal({ isOpen, onClose, onGroupCreated }: CreateGrou
                     </div>
 
                     {/* Content */}
-                    <div className="px-6 py-4 space-y-4">
+                    <div className="px-8 py-6 space-y-5">
                         {/* Group Name */}
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -194,7 +198,7 @@ export function CreateGroupModal({ isOpen, onClose, onGroupCreated }: CreateGrou
                                 value={groupName}
                                 onChange={(e) => setGroupName(e.target.value)}
                                 placeholder="Enter group name..."
-                                className="w-full px-4 py-3 bg-gray-100 border-0 rounded-xl text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-black focus:outline-none"
+                                className="w-full px-4 py-4 bg-gray-50 border border-gray-200 rounded-2xl text-gray-900 placeholder-gray-400 focus:border-gray-300 focus:bg-white focus:outline-none focus:ring-0 transition-all text-[15px]"
                                 maxLength={50}
                             />
                         </div>
@@ -210,18 +214,16 @@ export function CreateGroupModal({ isOpen, onClose, onGroupCreated }: CreateGrou
                                     value={memberInput}
                                     onChange={(e) => setMemberInput(e.target.value)}
                                     onKeyDown={handleKeyDown}
-                                    placeholder="0x... or ENS name"
-                                    className="flex-1 px-4 py-3 bg-gray-100 border-0 rounded-xl text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-black focus:outline-none"
+                                    placeholder="Wallet address (0x...)"
+                                    className="flex-1 px-4 py-4 bg-gray-50 border border-gray-200 rounded-2xl text-gray-900 placeholder-gray-400 focus:border-gray-300 focus:bg-white focus:outline-none focus:ring-0 transition-all text-[15px]"
                                 />
-                                <motion.button
+                                <button
                                     onClick={handleAddMember}
                                     disabled={!memberInput.trim()}
-                                    className="px-4 py-3 bg-black text-white rounded-xl font-medium disabled:opacity-40"
-                                    whileHover={{ scale: 1.02 }}
-                                    whileTap={{ scale: 0.98 }}
+                                    className="px-5 py-4 bg-gradient-to-br from-gray-800 to-black text-white rounded-2xl font-medium disabled:opacity-30 hover:shadow-lg active:scale-[0.98] transition-all"
                                 >
                                     Add
-                                </motion.button>
+                                </button>
                             </div>
                         </div>
 
@@ -294,34 +296,33 @@ export function CreateGroupModal({ isOpen, onClose, onGroupCreated }: CreateGrou
                     </div>
 
                     {/* Footer */}
-                    <div className="px-6 py-4 border-t border-gray-100 bg-gray-50">
+                    <div className="px-8 py-6 border-t border-gray-100 bg-gray-50/50">
                         <div className="flex gap-3">
                             <button
                                 onClick={handleClose}
-                                className="flex-1 py-3 px-4 bg-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-300 transition-colors"
+                                className="flex-1 py-3.5 px-4 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 active:scale-[0.98] transition-all"
                             >
                                 Cancel
                             </button>
-                            <motion.button
+                            <button
                                 onClick={handleCreateGroup}
                                 disabled={isCreating || !isConnected || !groupName.trim() || members.filter(m => m.isReachable).length === 0}
-                                className="flex-1 py-3 px-4 bg-black text-white rounded-xl font-medium disabled:opacity-40 disabled:cursor-not-allowed"
-                                whileHover={{ scale: 1.02 }}
-                                whileTap={{ scale: 0.98 }}
+                                className="flex-1 py-3.5 px-4 bg-gradient-to-br from-gray-800 to-black text-white rounded-xl font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:shadow-lg hover:shadow-gray-900/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                             >
                                 {isCreating ? (
-                                    <span className="flex items-center justify-center gap-2">
-                                        <motion.div
-                                            className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full"
-                                            animate={{ rotate: 360 }}
-                                            transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-                                        />
+                                    <>
+                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                                         Creating...
-                                    </span>
+                                    </>
                                 ) : (
-                                    'Create Group'
+                                    <>
+                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                        </svg>
+                                        Create Group
+                                    </>
                                 )}
-                            </motion.button>
+                            </button>
                         </div>
                     </div>
                 </motion.div>

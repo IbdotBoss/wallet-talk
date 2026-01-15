@@ -186,7 +186,7 @@ export function ChatPanel({ address, onBack }: ChatPanelProps) {
 
                 {/* Name & Status */}
                 <div className="flex-1 min-w-0">
-                    <h2 className="font-semibold text-gray-900 truncate">{finalDisplayName}</h2>
+                    <h2 className="font-semibold text-gray-900 truncate" style={{ fontFamily: 'Sora, sans-serif' }}>{finalDisplayName}</h2>
                     <div className="flex items-center gap-1.5">
                         <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-gray-400'}`} />
                         <span className="text-xs text-gray-500">
@@ -308,11 +308,8 @@ export function ChatPanel({ address, onBack }: ChatPanelProps) {
                                         </div>
                                     )}
 
-                                    <motion.div
+                                    <div
                                         className={`flex ${isSent ? 'justify-end' : 'justify-start'} mb-1`}
-                                        initial={{ opacity: 0, y: 8 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        transition={{ duration: 0.2 }}
                                     >
                                         <div
                                             className={`max-w-[75%] px-4 py-2.5 ${isSent
@@ -327,7 +324,7 @@ export function ChatPanel({ address, onBack }: ChatPanelProps) {
                                                 {formatMessageTime(message.timestamp)}
                                             </p>
                                         </div>
-                                    </motion.div>
+                                    </div>
                                 </div>
                             );
                         })}
@@ -337,7 +334,7 @@ export function ChatPanel({ address, onBack }: ChatPanelProps) {
             </div>
 
             {/* Input Bar */}
-            <div className="px-4 py-3 border-t border-gray-100 bg-white">
+            <div className="px-4 py-4 border-t border-gray-100 bg-white/95 backdrop-blur-sm">
                 <div className="flex items-end gap-3 max-w-2xl mx-auto">
                     <div className="flex-1 relative">
                         <textarea
@@ -345,34 +342,28 @@ export function ChatPanel({ address, onBack }: ChatPanelProps) {
                             value={inputValue}
                             onChange={handleInputChange}
                             onKeyDown={handleKeyDown}
-                            placeholder={isConnected ? "Type your message..." : "Connecting..."}
+                            placeholder={isConnected ? "Write a message..." : "Connecting..."}
                             rows={1}
-                            className="w-full px-4 py-3 bg-gray-100 border-0 rounded-2xl text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-gray-200 resize-none"
-                            style={{ minHeight: '48px', maxHeight: '120px' }}
+                            className="w-full px-4 py-3.5 bg-gray-50 border border-gray-200 rounded-2xl text-gray-900 placeholder-gray-400 focus:border-gray-300 focus:bg-white focus:ring-0 focus:outline-none resize-none transition-all duration-200 text-[15px]"
+                            style={{ minHeight: '52px', maxHeight: '120px' }}
                             disabled={!isConnected || isAddressBlocked}
                         />
                     </div>
 
-                    <motion.button
+                    <button
                         onClick={handleSend}
                         disabled={!inputValue.trim() || isSending || !isConnected || isAddressBlocked}
-                        className="w-12 h-12 rounded-full bg-black flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
+                        className="w-12 h-12 rounded-full bg-gradient-to-br from-gray-800 to-black flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed flex-shrink-0 shadow-lg shadow-gray-900/20 hover:shadow-xl hover:shadow-gray-900/30 active:scale-95 transition-all duration-200"
                         aria-label="Send message"
                     >
                         {isSending ? (
-                            <motion.div
-                                className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full"
-                                animate={{ rotate: 360 }}
-                                transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-                            />
+                            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                         ) : (
-                            <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                            <svg className="w-5 h-5 text-white translate-x-[1px]" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M3.478 2.404a.75.75 0 0 0-.926.941l2.432 7.905H13.5a.75.75 0 0 1 0 1.5H4.984l-2.432 7.905a.75.75 0 0 0 .926.94 60.519 60.519 0 0 0 18.445-8.986.75.75 0 0 0 0-1.218A60.517 60.517 0 0 0 3.478 2.404Z" />
                             </svg>
                         )}
-                    </motion.button>
+                    </button>
                 </div>
             </div>
             {/* Group Info Modal */}
