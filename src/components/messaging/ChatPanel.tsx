@@ -12,12 +12,14 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { usePrivy } from '@privy-io/react-auth';
 import { useMessageStore } from '@/store/messageStore';
 import { useIdentityStore } from '@/store/identityStore';
+import { usePeerProfileStore } from '@/store/peerProfileStore';
 import { useSecureXMTP } from '@/hooks/useSecureXMTP_v2';
 import { getHandleForAddress } from '@/lib/UsernameGenerator';
 import { truncateAddress, validateMessageLength } from '@/lib/SecurityService';
 import { triggerHaptic, hapticSuccess, hapticError } from '@/lib/haptics';
 import { addToBlocklist, isBlocked } from '@/lib/BlocklistService';
 import { messageRateLimiter } from '@/lib/RateLimiter';
+import { fetchAndStorePeerENS, isProfileMessage, handleIncomingProfile, createProfileMessage } from '@/lib/ProfileService';
 import { LiquidGlassAvatar } from '@/components/ui/LiquidGlassAvatar';
 import { GroupInfoModal } from '@/components/messaging/GroupInfoModal';
 
@@ -47,21 +49,41 @@ export function ChatPanel({ address, onBack }: ChatPanelProps) {
 
     const isMe = address?.toLowerCase() === user?.wallet?.address?.toLowerCase();
 
+    // Peer profile from store (includes ENS data)
+    const peerProfile = usePeerProfileStore((state) =>
+        address ? state.getProfile(address) : null
+    );
+
     // Determine display name and avatar
     const isGroup = conversation?.type === 'group';
-    const peerHandle = !isGroup && address ? getHandleForAddress(address) : null;
+
+    // Priority: ENS name > peer displayName > generated handle > truncated address
+    const getPeerDisplayName = (): string => {
+        if (peerProfile?.ensName) return peerProfile.ensName;
+        if (peerProfile?.displayName) return peerProfile.displayName;
+        const handle = address ? getHandleForAddress(address) : null;
+        if (handle) return handle;
+        return truncateAddress(address || '');
+    };
 
     const finalDisplayName = isMe
         ? (identity?.displayName || 'Me')
         : isGroup
             ? (conversation.groupName || 'Group Chat')
-            : (peerHandle || truncateAddress(address || ''));
+            : getPeerDisplayName();
 
     const finalAvatarUrl = isMe
         ? identity?.avatarUrl
         : isGroup
             ? conversation.groupImageUrl
-            : undefined; // Peer avatar handled by LiquidGlass for now
+            : peerProfile?.ensAvatar || peerProfile?.avatarUrl || undefined;
+
+    // Fetch ENS data for peer on mount
+    useEffect(() => {
+        if (address && !isMe && !isGroup) {
+            fetchAndStorePeerENS(address);
+        }
+    }, [address, isMe, isGroup]);
 
     const isAddressBlocked = address ? isBlocked(address) : false;
 

@@ -28,6 +28,7 @@
     "svg-path-commander": "^2.1.11",
     "tailwind-merge": "^3.4.0",
     "tailwindcss-animate": "^1.0.7",
+    "viem": "^2.44.2",
     "vite-plugin-node-polyfills": "^0.24.0",
     "zustand": "^5.0.0"
   },

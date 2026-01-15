@@ -9,16 +9,18 @@
  * - All messages section with group support
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useMessageStore, type Conversation } from '@/store/messageStore';
 import { useIdentityStore } from '@/store/identityStore';
+import { usePeerProfileStore } from '@/store/peerProfileStore';
 import { useSecureXMTP } from '@/hooks/useSecureXMTP_v2';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { getHandleForAddress } from '@/lib/UsernameGenerator';
 import { truncateAddress, validateAddress } from '@/lib/SecurityService';
 import { triggerHaptic, hapticSuccess, hapticError } from '@/lib/haptics';
+import { fetchAndStorePeerENS } from '@/lib/ProfileService';
 import { LiquidGlassAvatar } from '@/components/ui/LiquidGlassAvatar';
 import { CreateGroupModal } from '@/components/messaging/CreateGroupModal';
 import { ShimmerButtonSimple } from '@/components/ui/shimmer-button-simple';
@@ -595,28 +597,50 @@ function ConversationItem({
 }: ConversationItemProps) {
     const { identity } = useIdentityStore();
 
+    // Get peer profile from store
+    const peerProfile = usePeerProfileStore((state) =>
+        conversation.peerAddress ? state.getProfile(conversation.peerAddress) : null
+    );
+
     // Handle both DM and Group conversations
     const isGroup = conversation.type === 'group';
 
-    // For DMs
+    // For DMs - fetch ENS if needed
+    useEffect(() => {
+        if (!isGroup && conversation.peerAddress) {
+            fetchAndStorePeerENS(conversation.peerAddress);
+        }
+    }, [isGroup, conversation.peerAddress]);
+
+    // Generate handle as fallback
     const peerHandle = !isGroup ? getHandleForAddress(conversation.peerAddress) : null;
     const isMe = !isGroup && identity && conversation.peerAddress.toLowerCase() === identity.walletAddress.toLowerCase();
 
-    // Display name logic
+    // Display name logic with ENS priority
     let displayName: string;
     let avatarUrl: string | undefined;
     let avatarAddress: string;
+    let hasENS = false;
 
     if (isGroup) {
         displayName = conversation.groupName || 'Unnamed Group';
         avatarUrl = conversation.groupImageUrl;
-        avatarAddress = conversation.topic; // Use topic for consistent avatar generation
+        avatarAddress = conversation.topic;
     } else if (isMe) {
         displayName = identity!.displayName;
         avatarUrl = identity!.avatarUrl ?? undefined;
         avatarAddress = conversation.peerAddress;
     } else {
-        displayName = peerHandle || truncateAddress(conversation.peerAddress);
+        // Priority: ENS name > peer displayName > handle > truncated address
+        if (peerProfile?.ensName) {
+            displayName = peerProfile.ensName;
+            hasENS = true;
+        } else if (peerProfile?.displayName) {
+            displayName = peerProfile.displayName;
+        } else {
+            displayName = peerHandle || truncateAddress(conversation.peerAddress);
+        }
+        avatarUrl = peerProfile?.ensAvatar || peerProfile?.avatarUrl || undefined;
         avatarAddress = conversation.peerAddress;
     }
 
@@ -651,8 +675,13 @@ function ConversationItem({
             {/* Content */}
             <div className="flex-1 min-w-0 text-left">
                 <div className="flex items-center justify-between mb-0.5">
-                    <span className="font-semibold text-gray-900 truncate">
+                    <span className="font-semibold text-gray-900 truncate flex items-center gap-1.5">
                         {displayName}
+                        {hasENS && (
+                            <svg className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                        )}
                     </span>
                     <span className="text-xs text-gray-400 flex-shrink-0 ml-2">
                         {formatTime(conversation.lastMessageTime)}
