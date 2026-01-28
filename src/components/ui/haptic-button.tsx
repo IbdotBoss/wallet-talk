@@ -5,7 +5,7 @@
  * Apple-style smooth animations with press states
  */
 
-import { motion, HTMLMotionProps } from 'framer-motion';
+import { motion, HTMLMotionProps } from 'motion/react';
 import { triggerHaptic } from '@/lib/haptics';
 
 interface HapticButtonProps extends Omit<HTMLMotionProps<'button'>, 'onTap'> {

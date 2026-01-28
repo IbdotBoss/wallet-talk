@@ -7,7 +7,7 @@
 
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { usePrivy } from '@privy-io/react-auth';
 import { useMessageStore } from '@/store/messageStore';
 import { useSecureXMTP } from '@/hooks/useSecureXMTP_v2';
@@ -188,7 +188,7 @@ export function Conversations() {
             {/* Conversation list */}
             <div className="flex-1 overflow-y-auto">
                 {isLoading ? (
-                    <motion.div 
+                    <motion.div
                         className="p-4 space-y-3"
                         initial="hidden"
                         animate="visible"
@@ -197,8 +197,8 @@ export function Conversations() {
                         }}
                     >
                         {[...Array(5)].map((_, i) => (
-                            <motion.div 
-                                key={i} 
+                            <motion.div
+                                key={i}
                                 className="shimmer h-20 rounded-2xl"
                                 variants={{
                                     hidden: { opacity: 0, x: -20 },
@@ -219,9 +219,9 @@ export function Conversations() {
                             delay: 0.2,
                         }}
                     >
-                        <motion.div 
+                        <motion.div
                             className="empty-state-icon"
-                            animate={{ 
+                            animate={{
                                 scale: [1, 1.05, 1],
                             }}
                             transition={{
@@ -264,9 +264,9 @@ export function Conversations() {
                                     className="conversation-item w-full text-left group mx-2 md:mx-4"
                                     variants={{
                                         hidden: { opacity: 0, y: 20, scale: 0.95 },
-                                        visible: { 
-                                            opacity: 1, 
-                                            y: 0, 
+                                        visible: {
+                                            opacity: 1,
+                                            y: 0,
                                             scale: 1,
                                             transition: {
                                                 type: 'spring',
@@ -338,15 +338,15 @@ export function Conversations() {
                 className="fab"
                 initial={{ scale: 0, rotate: -90 }}
                 animate={{ scale: 1, rotate: 0 }}
-                transition={{ 
-                    type: 'spring', 
-                    stiffness: 400, 
-                    damping: 15, 
+                transition={{
+                    type: 'spring',
+                    stiffness: 400,
+                    damping: 15,
                     delay: 0.4,
                     rotate: { duration: 0.6, ease: [0.16, 1, 0.3, 1] }
                 }}
-                whileHover={{ 
-                    scale: 1.1, 
+                whileHover={{
+                    scale: 1.1,
                     rotate: 90,
                     y: -2,
                 }}
@@ -376,9 +376,9 @@ export function Conversations() {
                             initial={{ scale: 0.85, opacity: 0, y: 40, rotateX: 10 }}
                             animate={{ scale: 1, opacity: 1, y: 0, rotateX: 0 }}
                             exit={{ scale: 0.85, opacity: 0, y: 40, rotateX: 10 }}
-                            transition={{ 
-                                type: 'spring', 
-                                stiffness: 300, 
+                            transition={{
+                                type: 'spring',
+                                stiffness: 300,
                                 damping: 20,
                                 mass: 0.8,
                             }}

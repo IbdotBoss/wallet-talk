@@ -38,3 +38,11 @@ dev-dist/
 *.tsbuildinfo
 .vercel
 
+# Agent
+.agent
+.agents
+.claude
+.cursor
+.gemini
+.github
+.opencode

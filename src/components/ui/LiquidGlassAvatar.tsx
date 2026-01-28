@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 import { generateAvatarGradient, getAvatarInitial } from '@/lib/AvatarGenerator';
 
 interface LiquidGlassAvatarProps {

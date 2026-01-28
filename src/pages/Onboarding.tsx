@@ -10,7 +10,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { triggerHaptic } from '@/lib/haptics';
 import { ShimmerButtonSimple } from '@/components/ui/shimmer-button-simple';
@@ -39,7 +39,7 @@ export function Onboarding() {
             // For passkey users, wallet might not be immediately available
             // Check if user has any linked accounts or wallets
             const walletAddress = wallets?.[0]?.address;
-            
+
             if (walletAddress) {
                 // User has a wallet address
                 if (identity && identity.walletAddress.toLowerCase() === walletAddress.toLowerCase()) {
@@ -75,7 +75,7 @@ export function Onboarding() {
             setStep('identity');
             return;
         }
-        
+
         triggerHaptic('medium');
         setIsCreating(true);
         try {
@@ -92,7 +92,7 @@ export function Onboarding() {
             setStep('identity');
             return;
         }
-        
+
         triggerHaptic('light');
         try {
             await login();

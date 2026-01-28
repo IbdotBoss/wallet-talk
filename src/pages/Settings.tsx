@@ -7,7 +7,7 @@
 
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { truncateAddress } from '@/lib/SecurityService';
 import { getBlockedAddresses, removeFromBlocklist, clearBlocklist } from '@/lib/BlocklistService';

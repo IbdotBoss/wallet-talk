@@ -5,7 +5,7 @@
  * Provides Apple-style entrance animations with customizable variants
  */
 
-import { motion, Variants } from 'framer-motion';
+import { motion, Variants } from 'motion/react';
 import { useScrollAnimation } from '@/hooks/useScrollAnimation';
 
 interface AnimateOnScrollProps {

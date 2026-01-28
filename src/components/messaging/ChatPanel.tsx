@@ -8,7 +8,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { usePrivy } from '@privy-io/react-auth';
 import { useMessageStore } from '@/store/messageStore';
 import { useIdentityStore } from '@/store/identityStore';
@@ -19,7 +19,7 @@ import { truncateAddress, validateMessageLength } from '@/lib/SecurityService';
 import { triggerHaptic, hapticSuccess, hapticError } from '@/lib/haptics';
 import { addToBlocklist, isBlocked } from '@/lib/BlocklistService';
 import { messageRateLimiter } from '@/lib/RateLimiter';
-import { fetchAndStorePeerENS, isProfileMessage, handleIncomingProfile, createProfileMessage } from '@/lib/ProfileService';
+import { fetchAndStorePeerENS } from '@/lib/ProfileService';
 import { LiquidGlassAvatar } from '@/components/ui/LiquidGlassAvatar';
 import { GroupInfoModal } from '@/components/messaging/GroupInfoModal';
 
@@ -85,7 +85,8 @@ export function ChatPanel({ address, onBack }: ChatPanelProps) {
         }
     }, [address, isMe, isGroup]);
 
-    const isAddressBlocked = address ? isBlocked(address) : false;
+    const isConsentDenied = conversation?.consentState === 'denied';
+    const isAddressBlocked = (address ? isBlocked(address) : false) || isConsentDenied;
 
     // Scroll to bottom on new messages
     useEffect(() => {
@@ -208,7 +209,7 @@ export function ChatPanel({ address, onBack }: ChatPanelProps) {
 
                 {/* Name & Status */}
                 <div className="flex-1 min-w-0">
-                    <h2 className="font-semibold text-gray-900 truncate" style={{ fontFamily: 'Sora, sans-serif' }}>{finalDisplayName}</h2>
+                    <h2 className="font-semibold text-gray-900 truncate font-sans">{finalDisplayName}</h2>
                     <div className="flex items-center gap-1.5">
                         <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-gray-400'}`} />
                         <span className="text-xs text-gray-500">
@@ -366,7 +367,7 @@ export function ChatPanel({ address, onBack }: ChatPanelProps) {
                             onKeyDown={handleKeyDown}
                             placeholder={isConnected ? "Write a message..." : "Connecting..."}
                             rows={1}
-                            className="w-full px-4 py-3.5 bg-gray-50 border border-gray-200 rounded-2xl text-gray-900 placeholder-gray-400 focus:border-gray-300 focus:bg-white focus:ring-0 focus:outline-none resize-none transition-all duration-200 text-[15px]"
+                            className="w-full px-4 py-3.5 bg-gray-50 border border-gray-200 rounded-2xl text-gray-900 placeholder-gray-400 focus:border-accent focus:bg-white focus:ring-2 focus:ring-accent/20 focus:outline-none resize-none transition-all duration-200 text-[15px]"
                             style={{ minHeight: '52px', maxHeight: '120px' }}
                             disabled={!isConnected || isAddressBlocked}
                         />

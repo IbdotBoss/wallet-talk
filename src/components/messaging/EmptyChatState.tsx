@@ -2,7 +2,7 @@
  * Empty Chat State - Shown when no conversation is selected
  */
 
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 
 export function EmptyChatState() {
     return (

@@ -6,7 +6,7 @@
  */
 
 import { useState, useRef, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { LiquidGlassAvatar } from './LiquidGlassAvatar';
 import { triggerHaptic, hapticSuccess, hapticError } from '@/lib/haptics';
 import { uploadToIPFS, isIPFSConfigured } from '@/lib/IPFSService';

@@ -10,7 +10,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { AvatarUpload } from '@/components/ui/AvatarUpload';
 import { generateShuffleHandle } from '@/lib/UsernameGenerator';
 import { useIdentityStore, createIdentity } from '@/store/identityStore';

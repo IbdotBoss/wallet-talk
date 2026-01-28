@@ -62,6 +62,7 @@ export default {
 			},
 			fontFamily: {
 				sans: [
+					'Sora',
 					'Plus Jakarta Sans',
 					'-apple-system',
 					'BlinkMacSystemFont',

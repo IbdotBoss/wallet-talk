@@ -1,10 +1,8 @@
 import { Routes, Route, useLocation } from 'react-router-dom';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'motion/react';
 import { PrivyProvider } from './providers/PrivyProvider';
 import { Onboarding } from './pages/Onboarding';
-import { Chat } from './pages/Chat';
 import { Settings } from './pages/Settings';
-import { Conversations } from './pages/Conversations';
 import { MessagingLayout } from './layouts/MessagingLayout';
 
 // Apple-style page transition variants
@@ -30,7 +28,7 @@ const pageVariants = {
 };
 
 const pageTransition = {
-    type: 'spring',
+    type: 'spring' as const,
     stiffness: 300,
     damping: 30,
     mass: 0.8,
@@ -65,9 +63,6 @@ function App() {
                             {/* New 2-column messaging layout */}
                             <Route path="/messages" element={<MessagingLayout />} />
                             <Route path="/messages/:address" element={<MessagingLayout />} />
-                            {/* Legacy routes for compatibility */}
-                            <Route path="/conversations" element={<Conversations />} />
-                            <Route path="/chat/:address" element={<Chat />} />
                             <Route path="/settings" element={<Settings />} />
                         </Routes>
                     </motion.div>

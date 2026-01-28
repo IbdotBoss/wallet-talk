@@ -8,7 +8,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { usePrivy } from '@privy-io/react-auth';
 import { useMessageStore } from '@/store/messageStore';
 import { useSecureXMTP } from '@/hooks/useSecureXMTP_v2';

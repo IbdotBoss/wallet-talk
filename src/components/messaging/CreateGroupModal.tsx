@@ -8,7 +8,7 @@
  */
 
 import { useState, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { useSecureXMTP } from '@/hooks/useSecureXMTP_v2';
 import { validateAddress, truncateAddress } from '@/lib/SecurityService';
 import { LiquidGlassAvatar } from '@/components/ui/LiquidGlassAvatar';
@@ -172,7 +172,7 @@ export function CreateGroupModal({ isOpen, onClose, onGroupCreated }: CreateGrou
                     <div className="px-8 py-6 border-b border-gray-100">
                         <div className="flex items-center justify-between">
                             <div>
-                                <h2 className="text-2xl font-semibold text-gray-900" style={{ fontFamily: 'Sora, sans-serif' }}>New Group</h2>
+                                <h2 className="text-2xl font-semibold text-gray-900 font-sans">New Group</h2>
                                 <p className="text-gray-500 text-sm mt-1">Create a group conversation</p>
                             </div>
                             <button

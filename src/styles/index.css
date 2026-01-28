@@ -8,36 +8,6 @@
    ======================================== */
 
 :root {
-  /* Apple-standard colors */
-  --color-bg: #000000;
-  --color-bg-secondary: #1c1c1e;
-  --color-bg-tertiary: #2c2c2e;
-  --color-bg-elevated: #2c2c2e;
-
-  /* Apple System Blue */
-  --color-accent: #007AFF;
-  --color-accent-hover: #0A84FF;
-
-  /* Clean grays */
-  --color-text-primary: #ffffff;
-  --color-text-secondary: #8e8e93;
-  --color-text-muted: #48484a;
-
-  /* Borders */
-  --color-border: rgba(255, 255, 255, 0.1);
-  --color-border-hover: rgba(255, 255, 255, 0.2);
-
-  /* Status colors */
-  --color-success: #34C759;
-  --color-warning: #FF9F0A;
-  --color-error: #FF453A;
-
-  /* Glassmorphism */
-  --glass-bg: rgba(28, 28, 30, 0.8);
-  --glass-bg-hover: rgba(44, 44, 46, 0.8);
-  --glass-blur: 20px;
-  --glass-border: rgba(255, 255, 255, 0.1);
-
   /* Spacing */
   --safe-area-inset-top: env(safe-area-inset-top, 0px);
   --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
@@ -679,6 +649,29 @@ textarea {
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
     --radius: 0.5rem;
+
+    /* Mapped Legacy Variables (Light Mode Default) */
+    --color-bg: hsl(var(--background));
+    --color-bg-secondary: hsl(var(--secondary));
+    --color-bg-tertiary: hsl(var(--muted));
+    --color-bg-elevated: #ffffff;
+    --color-text-primary: hsl(var(--foreground));
+    --color-text-secondary: hsl(var(--muted-foreground));
+    --color-text-muted: hsl(var(--muted-foreground));
+    
+    --color-accent: #007AFF;
+    --color-accent-hover: #0A84FF;
+    
+    --color-border: hsl(var(--border));
+    --color-border-hover: hsl(var(--ring));
+    
+    --glass-bg: rgba(255, 255, 255, 0.8);
+    --glass-bg-hover: rgba(240, 240, 240, 0.8);
+    --glass-border: rgba(0, 0, 0, 0.1);
+    
+    --color-success: #34C759;
+    --color-warning: #FF9F0A;
+    --color-error: #FF453A;
   }
 
   .dark {
@@ -706,6 +699,12 @@ textarea {
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
+
+    /* Mapped Legacy Variables (Dark Mode Overrides) */
+    --color-bg-elevated: #2c2c2e;
+    --glass-bg: rgba(28, 28, 30, 0.8);
+    --glass-bg-hover: rgba(44, 44, 46, 0.8);
+    --glass-border: rgba(255, 255, 255, 0.1);
   }
 }
 

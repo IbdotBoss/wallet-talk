@@ -3,7 +3,8 @@
  * 
  * Features:
  * - Messages header with compose button
- * - Filter chips (All / DMs / Groups)
+ * - Filter chips (PillNavTabs)
+ * - Message Requests UI
  * - Search bar
  * - Pinned conversations section
  * - All messages section with group support
@@ -11,7 +12,7 @@
 
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { useMessageStore, type Conversation } from '@/store/messageStore';
 import { useIdentityStore } from '@/store/identityStore';
 import { usePeerProfileStore } from '@/store/peerProfileStore';
@@ -25,6 +26,8 @@ import { resolveENSAddress } from '@/lib/ENSService';
 import { LiquidGlassAvatar } from '@/components/ui/LiquidGlassAvatar';
 import { CreateGroupModal } from '@/components/messaging/CreateGroupModal';
 import { ShimmerButtonSimple } from '@/components/ui/shimmer-button-simple';
+import { PillNavTabs, type TabItem } from '@/components/messaging/PillNavTabs';
+import { MessageRequestCard } from '@/components/messaging/MessageRequestCard';
 
 interface ConversationsSidebarProps {
     onSelectConversation: (addressOrTopic: string, type?: 'dm' | 'group') => void;
@@ -36,9 +39,27 @@ export function ConversationsSidebar({
     selectedAddress
 }: ConversationsSidebarProps) {
     const navigate = useNavigate();
-    const { conversations, isLoading, activeFilter, setFilter, getFilteredConversations } = useMessageStore();
+    const {
+        isLoading,
+        activeFilter,
+        setFilter,
+        getFilteredConversations,
+        getAllowedConversations,
+        getMessageRequests,
+        updateConversationConsent
+    } = useMessageStore();
+
     const { identity } = useIdentityStore();
-    const { isConnected, isConnecting, startConversation, connect, error, resetConnection } = useSecureXMTP();
+    const {
+        isConnected,
+        isConnecting,
+        startConversation,
+        connect,
+        error,
+        resetConnection,
+        setConversationConsent
+    } = useSecureXMTP();
+
     const { authenticated } = usePrivy();
     const { wallets } = useWallets();
 
@@ -49,14 +70,21 @@ export function ConversationsSidebar({
     const [isStarting, setIsStarting] = useState(false);
     const [inputError, setInputError] = useState<string | null>(null);
     const [isConnectingXMTP, setIsConnectingXMTP] = useState(false);
+    const [consentActionLoading, setConsentActionLoading] = useState<string | null>(null);
 
     // Mock pinned state (in production, would come from store)
     const [pinnedAddresses] = useState<Set<string>>(new Set());
 
-    // Use identity store for display name
-    const userDisplayName = identity?.displayName || null;
+    // Get lists for counts
+    const allowedConversations = getAllowedConversations();
+    const messageRequests = getMessageRequests();
 
-    // Get filtered conversations based on active filter
+    // Counts for tabs
+    const dmCount = allowedConversations.filter(c => c.type === 'dm').length;
+    const groupCount = allowedConversations.filter(c => c.type === 'group').length;
+    const requestsCount = messageRequests.length;
+
+    // Get filtered list based on active filter (which now includes 'requests')
     const baseFilteredConversations = getFilteredConversations();
 
     // Apply search filter
@@ -81,18 +109,18 @@ export function ConversationsSidebar({
         return false;
     });
 
-    // Separate pinned and regular (only DMs can be pinned currently)
-    const pinnedConversations = filteredConversations.filter(
+    // Separate pinned and regular (Only for non-requests view)
+    const isRequestsView = activeFilter === 'requests';
+
+    const pinnedConversations = !isRequestsView ? filteredConversations.filter(
         c => c && c.type === 'dm' && pinnedAddresses.has(c.peerAddress)
-    );
-    const regularConversations = filteredConversations.filter(
+    ) : [];
+
+    const regularConversations = !isRequestsView ? filteredConversations.filter(
         c => c && !(c.type === 'dm' && pinnedAddresses.has(c.peerAddress))
-    );
+    ) : filteredConversations;
 
-    // Counts for filter chips
-    const dmCount = conversations.filter(c => c.type === 'dm').length;
-    const groupCount = conversations.filter(c => c.type === 'group').length;
-
+    // Time formatter
     const formatTime = (date?: Date | string) => {
         if (!date) return '';
         const dateObj = new Date(date);
@@ -109,6 +137,15 @@ export function ConversationsSidebar({
         return dateObj.toLocaleDateString([], { month: 'short', day: 'numeric' });
     };
 
+    // Navigation Tabs
+    const navTabs: TabItem[] = [
+        { id: 'all', label: 'All' },
+        { id: 'dms', label: 'DMs', count: dmCount },
+        { id: 'groups', label: 'Groups', count: groupCount },
+        { id: 'requests', label: 'Requests', count: requestsCount > 0 ? requestsCount : undefined },
+    ];
+
+    // Actions
     const handleNewChat = () => {
         triggerHaptic('medium');
         setShowNewChat(true);
@@ -176,9 +213,9 @@ export function ConversationsSidebar({
         onSelectConversation(groupId, 'group');
     };
 
-    const handleFilterChange = (filter: 'all' | 'dms' | 'groups') => {
+    const handleTabChange = (tabId: string) => {
         triggerHaptic('light');
-        setFilter(filter);
+        setFilter(tabId as any);
     };
 
     const handleConnectXMTP = async () => {
@@ -188,7 +225,6 @@ export function ConversationsSidebar({
             await connect();
             hapticSuccess();
         } catch (err) {
-            // Error is already handled by the hook's error state
             console.error('[ConversationsSidebar] XMTP connection failed:', err);
             hapticError();
         } finally {
@@ -197,21 +233,52 @@ export function ConversationsSidebar({
     };
 
     const handleRetryConnection = () => {
-        // resetConnection is synchronous and resets state/refs immediately,
-        // so there's no race condition with the subsequent connect call
         resetConnection();
         handleConnectXMTP();
     };
 
+    // Consent Actions
+    const handleAcceptRequest = async (topic: string) => {
+        setConsentActionLoading(topic);
+        try {
+            // Updated store first for immediate UI feedback
+            updateConversationConsent(topic, 'allowed');
+            await setConversationConsent(topic, 'allowed');
+            hapticSuccess();
+        } catch (error) {
+            console.error('Failed to accept request:', error);
+            hapticError();
+            // Revert on error
+            updateConversationConsent(topic, 'unknown');
+        } finally {
+            setConsentActionLoading(null);
+        }
+    };
+
+    const handleBlockRequest = async (topic: string) => {
+        setConsentActionLoading(topic);
+        try {
+            updateConversationConsent(topic, 'denied');
+            await setConversationConsent(topic, 'denied');
+            hapticSuccess();
+        } catch (error) {
+            console.error('Failed to block request:', error);
+            hapticError();
+            updateConversationConsent(topic, 'unknown');
+        } finally {
+            setConsentActionLoading(null);
+        }
+    };
+
     return (
-        <div className="h-full flex flex-col bg-white relative">
+        <div className="h-full flex flex-col bg-white relative border-r border-gray-100">
             {/* Header */}
             <div className="px-4 py-4 border-b border-gray-100">
                 <div className="flex items-center justify-between mb-4">
                     <div>
-                        <h1 className="text-2xl font-bold text-gray-900" style={{ fontFamily: 'Sora, sans-serif' }}>Messages</h1>
-                        {userDisplayName && (
-                            <p className="text-sm text-gray-500">{userDisplayName}</p>
+                        <h1 className="text-2xl font-bold text-gray-900 font-sans">Messages</h1>
+                        {identity?.displayName && (
+                            <p className="text-sm text-gray-500">{identity.displayName}</p>
                         )}
                     </div>
                     <div className="flex items-center gap-2">
@@ -251,25 +318,12 @@ export function ConversationsSidebar({
                     </div>
                 </div>
 
-                {/* Filter Chips */}
-                <div className="flex gap-2 mb-3">
-                    <FilterChip
-                        label="All"
-                        count={conversations.length}
-                        isActive={activeFilter === 'all'}
-                        onClick={() => handleFilterChange('all')}
-                    />
-                    <FilterChip
-                        label="DMs"
-                        count={dmCount}
-                        isActive={activeFilter === 'dms'}
-                        onClick={() => handleFilterChange('dms')}
-                    />
-                    <FilterChip
-                        label="Groups"
-                        count={groupCount}
-                        isActive={activeFilter === 'groups'}
-                        onClick={() => handleFilterChange('groups')}
+                {/* Pill Nav Tabs */}
+                <div className="mb-4 overflow-x-auto no-scrollbar">
+                    <PillNavTabs
+                        tabs={navTabs}
+                        activeTab={activeFilter}
+                        onTabChange={handleTabChange}
                     />
                 </div>
 
@@ -282,7 +336,8 @@ export function ConversationsSidebar({
                         type="text"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Search messages"
+                        placeholder={isRequestsView ? "Search requests" : "Search messages"}
+                        aria-label="Search conversations"
                         className="w-full pl-10 pr-4 py-2.5 bg-gray-100 border-0 rounded-xl text-sm text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-gray-200 focus:bg-white transition-all"
                     />
                 </div>
@@ -356,32 +411,29 @@ export function ConversationsSidebar({
                                     'Connect to XMTP'
                                 )}
                             </ShimmerButtonSimple>
-
-                            <p className="text-xs text-gray-500 mt-3 flex items-center gap-1">
-                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                                </svg>
-                                End-to-end encrypted messaging
-                            </p>
                         </div>
                     </div>
                 </motion.div>
             )}
 
             {/* Conversation List */}
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto px-4 pt-4 pb-24">
                 {isLoading ? (
-                    <div className="p-4 space-y-3">
+                    <div className="space-y-3">
                         {[...Array(5)].map((_, i) => (
-                            <div key={i} className="h-16 bg-gray-100 rounded-xl animate-pulse" />
+                            <div key={i} className="h-20 bg-gray-50 rounded-xl animate-pulse" />
                         ))}
                     </div>
                 ) : filteredConversations.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+                    <div className="flex flex-col items-center justify-center h-full text-center py-12">
                         <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
                             {activeFilter === 'groups' ? (
                                 <svg className="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                                </svg>
+                            ) : activeFilter === 'requests' ? (
+                                <svg className="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                                 </svg>
                             ) : (
                                 <svg className="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -390,27 +442,71 @@ export function ConversationsSidebar({
                             )}
                         </div>
                         <p className="text-gray-900 font-medium mb-1">
-                            {activeFilter === 'groups' ? 'No groups yet' : activeFilter === 'dms' ? 'No direct messages' : 'No conversations'}
+                            {activeFilter === 'groups' ? 'No groups yet'
+                                : activeFilter === 'requests' ? 'No message requests'
+                                    : activeFilter === 'dms' ? 'No direct messages'
+                                        : 'No conversations'}
                         </p>
-                        <p className="text-gray-500 text-sm">
-                            {activeFilter === 'groups' ? 'Create a group to get started' : 'Start a new chat to begin'}
+                        <p className="text-gray-500 text-sm mb-4">
+                            {activeFilter === 'groups' ? 'Start a new group chat' : 'Messages you receive will appear here'}
                         </p>
+                        <button
+                            onClick={handleNewChat}
+                            className="px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-black transition-colors"
+                        >
+                            Start Conversation
+                        </button>
                     </div>
                 ) : (
-                    <>
-                        {/* Pinned Section */}
-                        {pinnedConversations.length > 0 && (
-                            <div className="px-4 pt-4">
-                                <div className="flex items-center gap-2 mb-2">
-                                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Pinned</span>
-                                    <span className="text-xs text-gray-400">{pinnedConversations.length}</span>
-                                </div>
-                                {pinnedConversations.map((conv) => (
+                    <div className="space-y-2">
+                        {/* Requests View */}
+                        {isRequestsView ? (
+                            <div className="space-y-3">
+                                <AnimatePresence initial={false} mode='popLayout'>
+                                    {filteredConversations.map(conv => (
+                                        <MessageRequestCard
+                                            key={conv.topic}
+                                            conversation={conv}
+                                            onAccept={handleAcceptRequest}
+                                            onBlock={handleBlockRequest}
+                                            isLoading={consentActionLoading === conv.topic}
+                                        />
+                                    ))}
+                                </AnimatePresence>
+                            </div>
+                        ) : (
+                            /* Regular Conversation List */
+                            <>
+                                {/* Pinned Section */}
+                                {pinnedConversations.length > 0 && (
+                                    <div className="mb-4">
+                                        <div className="flex items-center gap-2 mb-2 px-1">
+                                            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Pinned</span>
+                                            <span className="text-xs text-gray-400">{pinnedConversations.length}</span>
+                                        </div>
+                                        {pinnedConversations.map((conv) => (
+                                            <ConversationItem
+                                                key={conv.topic}
+                                                conversation={conv}
+                                                isSelected={selectedAddress === conv.peerAddress || selectedAddress === conv.topic}
+                                                isPinned={true}
+                                                onSelect={() => onSelectConversation(
+                                                    conv.type === 'group' ? conv.topic : conv.peerAddress,
+                                                    conv.type
+                                                )}
+                                                formatTime={formatTime}
+                                            />
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* All Messages */}
+                                {regularConversations.map((conv) => (
                                     <ConversationItem
                                         key={conv.topic}
                                         conversation={conv}
                                         isSelected={selectedAddress === conv.peerAddress || selectedAddress === conv.topic}
-                                        isPinned={true}
+                                        isPinned={false}
                                         onSelect={() => onSelectConversation(
                                             conv.type === 'group' ? conv.topic : conv.peerAddress,
                                             conv.type
@@ -418,31 +514,9 @@ export function ConversationsSidebar({
                                         formatTime={formatTime}
                                     />
                                 ))}
-                            </div>
+                            </>
                         )}
-
-                        {/* All Messages Section */}
-                        <div className="px-4 pt-4">
-                            {pinnedConversations.length > 0 && (
-                                <div className="flex items-center gap-2 mb-2">
-                                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">All Messages</span>
-                                </div>
-                            )}
-                            {regularConversations.map((conv) => (
-                                <ConversationItem
-                                    key={conv.topic}
-                                    conversation={conv}
-                                    isSelected={selectedAddress === conv.peerAddress || selectedAddress === conv.topic}
-                                    isPinned={false}
-                                    onSelect={() => onSelectConversation(
-                                        conv.type === 'group' ? conv.topic : conv.peerAddress,
-                                        conv.type
-                                    )}
-                                    formatTime={formatTime}
-                                />
-                            ))}
-                        </div>
-                    </>
+                    </div>
                 )}
             </div>
 
@@ -480,7 +554,7 @@ export function ConversationsSidebar({
                         >
                             <div className="flex items-center justify-between mb-6">
                                 <div>
-                                    <h2 className="text-2xl font-semibold text-gray-900" style={{ fontFamily: 'Sora, sans-serif' }}>
+                                    <h2 className="text-2xl font-semibold text-gray-900 font-sans">
                                         New Message
                                     </h2>
                                     <p className="text-gray-500 text-sm mt-1">
@@ -563,42 +637,7 @@ export function ConversationsSidebar({
                 onClose={() => setShowNewGroup(false)}
                 onGroupCreated={handleGroupCreated}
             />
-        </div>
-    );
-}
-
-// ============================================================================
-// FILTER CHIP COMPONENT
-// ============================================================================
-
-interface FilterChipProps {
-    label: string;
-    count?: number;
-    isActive: boolean;
-    onClick: () => void;
-}
-
-function FilterChip({ label, count, isActive, onClick }: FilterChipProps) {
-    return (
-        <motion.button
-            onClick={onClick}
-            className={`
-                px-3 py-1.5 rounded-full text-sm font-medium transition-all
-                ${isActive
-                    ? 'bg-gray-900 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }
-            `}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-        >
-            {label}
-            {count !== undefined && count > 0 && (
-                <span className={`ml-1.5 ${isActive ? 'text-gray-300' : 'text-gray-400'}`}>
-                    {count}
-                </span>
-            )}
-        </motion.button>
+        </div >
     );
 }
 

@@ -28,6 +28,9 @@ export interface Conversation {
     lastMessage?: string;
     lastMessageTime?: Date;
     unreadCount: number;
+    // XMTP consent state
+    consentState?: 'allowed' | 'denied' | 'unknown';
+    addedByInboxId?: string;     // For groups: who added you
 }
 
 interface MessageState {
@@ -38,7 +41,7 @@ interface MessageState {
     error: string | null;
 
     // Filter state for unified list
-    activeFilter: 'all' | 'dms' | 'groups';
+    activeFilter: 'all' | 'dms' | 'groups' | 'requests';
 
     // Actions - Conversations
     setConversations: (conversations: Conversation[]) => void;
@@ -49,10 +52,11 @@ interface MessageState {
     // Actions - Messages
     setMessages: (topic: string, messages: Message[]) => void;
     addMessage: (topic: string, message: Message) => void;
+    replaceMessage: (topic: string, oldId: string, newMessage: Message) => void;
     markAsRead: (topic: string) => void;
 
     // Actions - Filter
-    setFilter: (filter: 'all' | 'dms' | 'groups') => void;
+    setFilter: (filter: 'all' | 'dms' | 'groups' | 'requests') => void;
 
     // Actions - Utility
     setLoading: (loading: boolean) => void;
@@ -64,6 +68,13 @@ interface MessageState {
     getConversationByTopic: (topic: string) => Conversation | undefined;
     getDmConversations: () => Conversation[];
     getGroupConversations: () => Conversation[];
+    // Consent-based selectors
+    getAllowedConversations: () => Conversation[];
+    getMessageRequests: () => Conversation[];
+    getDeniedConversations: () => Conversation[];
+
+    // Consent actions
+    updateConversationConsent: (topic: string, consentState: 'allowed' | 'denied' | 'unknown') => void;
 }
 
 export const useMessageStore = create<MessageState>()(
@@ -178,6 +189,17 @@ export const useMessageStore = create<MessageState>()(
                 });
             },
 
+            replaceMessage: (topic, oldId, newMessage) => {
+                const newMap = new Map(get().messages);
+                const existing = newMap.get(topic) || [];
+
+                // Find and replace
+                const updated = existing.map(m => m.id === oldId ? newMessage : m);
+
+                newMap.set(topic, updated);
+                set({ messages: newMap });
+            },
+
             markAsRead: (topic) => {
                 set((state) => ({
                     conversations: state.conversations.map((c) =>
@@ -216,13 +238,19 @@ export const useMessageStore = create<MessageState>()(
 
             getFilteredConversations: () => {
                 const { conversations, activeFilter } = get();
+                // Helper to check if conversation is allowed (default) or unknown/denied
+                const isAllowed = (c: Conversation) => c.consentState === 'allowed' || c.consentState === undefined;
+
                 switch (activeFilter) {
                     case 'dms':
-                        return conversations.filter(c => c.type === 'dm');
+                        return conversations.filter(c => c.type === 'dm' && isAllowed(c));
                     case 'groups':
-                        return conversations.filter(c => c.type === 'group');
+                        return conversations.filter(c => c.type === 'group' && isAllowed(c));
+                    case 'requests':
+                        return conversations.filter(c => c.consentState === 'unknown');
                     default:
-                        return conversations;
+                        // 'all' - only show allowed
+                        return conversations.filter(c => isAllowed(c));
                 }
             },
 
@@ -237,14 +265,45 @@ export const useMessageStore = create<MessageState>()(
             getGroupConversations: () => {
                 return get().conversations.filter(c => c.type === 'group');
             },
+
+            // Consent-based selectors
+            getAllowedConversations: () => {
+                return get().conversations.filter(c =>
+                    c.consentState === 'allowed' || c.consentState === undefined
+                );
+            },
+
+            getMessageRequests: () => {
+                return get().conversations.filter(c => c.consentState === 'unknown');
+            },
+
+            getDeniedConversations: () => {
+                return get().conversations.filter(c => c.consentState === 'denied');
+            },
+
+            // Consent actions
+            updateConversationConsent: (topic, consentState) => {
+                set((state) => ({
+                    conversations: state.conversations.map((c) =>
+                        c.topic === topic ? { ...c, consentState } : c
+                    ),
+                }));
+            },
         }),
         {
             name: 'antigravity-messages',
-            // Only persist conversations, not messages (to limit storage)
+            // Persist conversations AND messages now
             partialize: (state) => ({
                 conversations: state.conversations,
+                messages: Object.fromEntries(state.messages), // Convert Map to object for storage
                 activeFilter: state.activeFilter,
             }),
+            // Hydrate Map from object
+            onRehydrateStorage: () => (state) => {
+                if (state && state.messages && !(state.messages instanceof Map)) {
+                    state.messages = new Map(Object.entries(state.messages));
+                }
+            },
         }
     )
 );

@@ -9,7 +9,7 @@
 
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { ConversationsSidebar } from '@/components/messaging/ConversationsSidebar';
 import { ChatPanel } from '@/components/messaging/ChatPanel';
 import { EmptyChatState } from '@/components/messaging/EmptyChatState';

@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { usePrivy } from '@privy-io/react-auth';
 import { useSecureXMTP } from '@/hooks/useSecureXMTP_v2';
 import { validateAddress, truncateAddress } from '@/lib/SecurityService';
@@ -210,10 +210,10 @@ export function GroupInfoModal({
                             <h2 className="text-xl font-semibold text-gray-900">Group Info</h2>
                             {myRole && (
                                 <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${myRole.isSuperAdmin
-                                        ? 'bg-purple-100 text-purple-700'
-                                        : myRole.isAdmin
-                                            ? 'bg-blue-100 text-blue-700'
-                                            : 'bg-gray-100 text-gray-600'
+                                    ? 'bg-purple-100 text-purple-700'
+                                    : myRole.isAdmin
+                                        ? 'bg-blue-100 text-blue-700'
+                                        : 'bg-gray-100 text-gray-600'
                                     }`}>
                                     {myRole.isSuperAdmin ? 'Super Admin' : myRole.isAdmin ? 'Admin' : 'Member'}
                                 </span>
