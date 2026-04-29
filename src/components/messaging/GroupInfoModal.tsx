@@ -263,36 +263,61 @@ export function GroupInfoModal({
                             <div className="space-y-6">
                                 {/* Group Image */}
                                 <div className="flex justify-center">
-                                    <AvatarUpload
-                                        currentAvatarUrl={groupImageUrl}
-                                        walletAddress={groupId} // Use group ID for gradient seed
-                                        displayName={groupName}
-                                        onUpload={(url) => setGroupImageUrl(url)}
-                                        onRemove={() => setGroupImageUrl(null)}
-                                        size="2xl"
-                                    />
+                                    {myRole?.isAdmin || myRole?.isSuperAdmin ? (
+                                        <AvatarUpload
+                                            currentAvatarUrl={groupImageUrl}
+                                            walletAddress={groupId} // Use group ID for gradient seed
+                                            displayName={groupName}
+                                            onUpload={(url) => setGroupImageUrl(url)}
+                                            onRemove={() => setGroupImageUrl(null)}
+                                            size="2xl"
+                                        />
+                                    ) : (
+                                        <div className="w-32 h-32 rounded-full bg-gray-100 flex items-center justify-center overflow-hidden">
+                                            {groupImageUrl ? (
+                                                <img src={groupImageUrl} alt={groupName} className="w-full h-full object-cover" />
+                                            ) : (
+                                                <div className="text-4xl text-gray-300">{groupName.charAt(0).toUpperCase()}</div>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Group Name */}
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-2">Group Name</label>
-                                    <input
-                                        type="text"
-                                        value={groupName}
-                                        onChange={(e) => setGroupName(e.target.value)}
-                                        className="w-full px-4 py-3 bg-gray-100 border-0 rounded-xl text-gray-900 focus:ring-2 focus:ring-black focus:outline-none"
-                                        placeholder="Enter group name"
-                                    />
+                                    {(myRole?.isAdmin || myRole?.isSuperAdmin) ? (
+                                        <input
+                                            type="text"
+                                            value={groupName}
+                                            onChange={(e) => setGroupName(e.target.value)}
+                                            className="w-full px-4 py-3 bg-gray-100 border-0 rounded-xl text-gray-900 focus:ring-2 focus:ring-black focus:outline-none"
+                                            placeholder="Enter group name"
+                                        />
+                                    ) : (
+                                        <div className="w-full px-4 py-3 bg-gray-50 border-0 rounded-xl text-gray-900">
+                                            {groupName || 'Unnamed Group'}
+                                        </div>
+                                    )}
                                 </div>
 
-                                {/* Save Button */}
-                                <button
-                                    onClick={handleSaveInfo}
-                                    disabled={isSaving || (groupName === initialGroupName && groupImageUrl === initialGroupImageUrl)}
-                                    className="w-full py-3 bg-black text-white rounded-xl font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                                >
-                                    {isSaving ? 'Saving...' : 'Save Changes'}
-                                </button>
+                                {/* Admin-only notice */}
+                                {!(myRole?.isAdmin || myRole?.isSuperAdmin) && (
+                                    <div className="p-3 bg-yellow-50 text-yellow-700 rounded-xl text-sm">
+                                        Only admins can edit group info. Contact an admin to request changes.
+                                    </div>
+                                )}
+
+                                {/* Save Button - Admin only */}
+                                {(myRole?.isAdmin || myRole?.isSuperAdmin) && (
+                                    <button
+                                        onClick={handleSaveInfo}
+                                        disabled={isSaving || (groupName === initialGroupName && groupImageUrl === initialGroupImageUrl)}
+                                        className="w-full py-3 bg-black text-white rounded-xl font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                                    >
+                                        {isSaving ? 'Saving...' : 'Save Changes'}
+                                    </button>
+                                )}
 
                                 <div className="border-t border-gray-100 pt-6 mt-6">
                                     <button
@@ -306,23 +331,29 @@ export function GroupInfoModal({
                             </div>
                         ) : (
                             <div className="space-y-4">
-                                {/* Add Member */}
-                                <div className="flex gap-2 mb-6">
-                                    <input
-                                        type="text"
-                                        value={newMemberInput}
-                                        onChange={(e) => setNewMemberInput(e.target.value)}
-                                        placeholder="Add member (0x...)"
-                                        className="flex-1 px-4 py-2 bg-gray-100 border-0 rounded-xl text-gray-900 focus:ring-2 focus:ring-black focus:outline-none text-sm"
-                                    />
-                                    <button
-                                        onClick={handleAddMember}
-                                        disabled={!newMemberInput.trim() || isSaving}
-                                        className="px-4 py-2 bg-black text-white rounded-xl text-sm font-medium disabled:opacity-50"
-                                    >
-                                        Add
-                                    </button>
-                                </div>
+                                {/* Add Member - Admin only */}
+                                {(myRole?.isAdmin || myRole?.isSuperAdmin) ? (
+                                    <div className="flex gap-2 mb-6">
+                                        <input
+                                            type="text"
+                                            value={newMemberInput}
+                                            onChange={(e) => setNewMemberInput(e.target.value)}
+                                            placeholder="Add member (0x...)"
+                                            className="flex-1 px-4 py-2 bg-gray-100 border-0 rounded-xl text-gray-900 focus:ring-2 focus:ring-black focus:outline-none text-sm"
+                                        />
+                                        <button
+                                            onClick={handleAddMember}
+                                            disabled={!newMemberInput.trim() || isSaving}
+                                            className="px-4 py-2 bg-black text-white rounded-xl text-sm font-medium disabled:opacity-50"
+                                        >
+                                            Add
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="p-3 bg-gray-50 rounded-xl text-sm text-gray-500 mb-4">
+                                        Only admins can add members.
+                                    </div>
+                                )}
 
                                 {/* Member List */}
                                 {isLoadingMembers ? (

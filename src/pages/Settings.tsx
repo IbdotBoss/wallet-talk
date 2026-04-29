@@ -85,8 +85,8 @@ export function Settings() {
         clearMessages();
         clearBlocklist();
         clearAllLimits();
-        localStorage.removeItem('antigravity_handles');
-        localStorage.removeItem('antigravity-identity');
+        safeStorage.removeItem('antigravity_handles');
+        safeStorage.removeItem('antigravity-identity');
         hapticSuccess();
         setShowClearConfirm(false);
     };
