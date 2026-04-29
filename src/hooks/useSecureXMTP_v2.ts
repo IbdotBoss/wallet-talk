@@ -20,6 +20,14 @@ import { useXMTPStore, getGlobalXMTPClient, setGlobalXMTPClient } from '@/store/
 // App version for XMTP analytics (recommended by XMTP docs)
 const APP_VERSION = 'wallet-talk/1.0.0';
 
+// XMTP network configuration
+const XMTP_ENV = import.meta.env.VITE_XMTP_ENV || 'dev';
+const HISTORY_SYNC_URLS = {
+  dev: 'https://message-history.dev.ephemera.network',
+  production: 'https://message-history.production.ephemera.network',
+} as const;
+
+
 // Connection timeout in milliseconds (increased for slow connections)
 const CONNECTION_TIMEOUT_MS = 60000; // 60 seconds
 
@@ -461,8 +469,9 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                     console.log('[XMTP] Using dbPath:', dbPath);
 
                     const client = await SDKClient.create(signer, {
-                        env: 'dev',
+                        env: XMTP_ENV as 'dev' | 'production',
                         appVersion: APP_VERSION,
+                        historySyncUrl: HISTORY_SYNC_URLS[XMTP_ENV as keyof typeof HISTORY_SYNC_URLS],
                         // Enable persistence for offline support and faster loads
                         dbPath: dbPath,
                     });
@@ -512,6 +521,8 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
         } catch (err) {
             console.error('[XMTP] Connection Error:', err);
             const message = err instanceof Error ? err.message : 'Failed to connect';
+            setClient(null, undefined);
+            setGlobalXMTPClient(null);
 
             // Retry logic
             if (connectionRetryCount.current < MAX_CONNECTION_RETRIES) {
@@ -630,6 +641,12 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
 
     const startMessageStream = async (xmtpClient: Client | MockClient) => {
         if (USE_MOCK_XMTP) return;
+
+        // Close any existing stream to prevent leaks
+        if (streamRef.current) {
+            streamRef.current.return?.();
+            streamRef.current = null;
+        }
 
         try {
             // Use dynamically loaded ConsentState

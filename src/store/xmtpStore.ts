@@ -6,7 +6,7 @@
  */
 
 import { create } from 'zustand';
-import type { Client } from '@xmtp/browser-sdk';
+// Client type imported dynamically where needed
 
 // Use 'any' for client to support both real Client and MockClient types
 interface XMTPState {
