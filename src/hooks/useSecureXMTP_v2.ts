@@ -37,10 +37,10 @@ const safeStorage = {
 // Conditional logger: verbose in dev, minimal in production
 const isDev = import.meta.env.DEV;
 const xlog = {
-  debug: (...args: any[]) => { if (isDev) xlog.log('', ...args); },
-  info: (...args: any[]) => { if (isDev) xlog.log('', ...args); },
-  warn: (...args: any[]) => { if (isDev) xlog.warn('', ...args); },
-  error: (...args: any[]) => xlog.error('', ...args), // Always visible
+  debug: (...args: any[]) => { if (isDev) console.log("[XMTP]", ...args); },
+  info: (...args: any[]) => { if (isDev) console.log("[XMTP]", ...args); },
+  warn: (...args: any[]) => { if (isDev) console.warn("[XMTP]", ...args); },
+  error: (...args: any[]) => { console.error("[XMTP]", ...args); },
 };
 
 const APP_VERSION = 'wallet-talk/1.0.0';
@@ -472,7 +472,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
             // Load SDK dynamically
             xlog.debug('About to load SDK dynamically...');
             const { Client: SDKClient } = await loadXMTPSDK();
-            xlog.log(' SDK module loaded, about to call Client.create...');
+            console.log(' SDK module loaded, about to call Client.create...');
 
             // Create client with dev environment
             const createClient = async () => {
@@ -483,15 +483,15 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                 // See: https://docs.xmtp.org/chat-apps/core-messaging/create-a-client
 
                 try {
-                    xlog.log(' Calling Client.create() NOW...');
-                    xlog.log(' Signer type:', signer.type);
-                    xlog.log(' Signer identifier:', signer.getIdentifier());
-                    xlog.log(' Signer type:', signer.type);
-                    xlog.log(' Signer identifier:', signer.getIdentifier());
+                    console.log(' Calling Client.create() NOW...');
+                    console.log(' Signer type:', signer.type);
+                    console.log(' Signer identifier:', signer.getIdentifier());
+                    console.log(' Signer type:', signer.type);
+                    console.log(' Signer identifier:', signer.getIdentifier());
 
                     // Enable persistence with user-specific DB path
                     const dbPath = `xmtp-${wallet.address.toLowerCase()}.db`;
-                    xlog.log(' Using dbPath:', dbPath);
+                    console.log(' Using dbPath:', dbPath);
 
                     const client = await SDKClient.create(signer, {
                         env: XMTP_ENV as 'dev' | 'production',
@@ -812,16 +812,16 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
 
     const startConversation = useCallback(
         async (peerAddress: string): Promise<Conversation | MockConversation | null> => {
-            xlog.log(' startConversation called with:', peerAddress);
+            console.log(' startConversation called with:', peerAddress);
 
             if (!client) {
-                xlog.log(' startConversation failed: no client');
+                console.log(' startConversation failed: no client');
                 setError('Not connected to XMTP');
                 return null;
             }
 
             if (!validateAddress(peerAddress)) {
-                xlog.log(' startConversation failed: invalid address');
+                console.log(' startConversation failed: invalid address');
                 setError('Invalid address');
                 return null;
             }
@@ -844,7 +844,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                 const peerInboxId = await getInboxIdFromAddress(client as Client, peerAddress);
 
                 if (!peerInboxId) {
-                    xlog.log(' Failed to resolve inbox ID for address:', peerAddress);
+                    console.log(' Failed to resolve inbox ID for address:', peerAddress);
                     setError('Could not resolve inbox ID for this address');
                     return null;
                 }
@@ -1047,7 +1047,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                     const inboxId = await getInboxIdFromAddress(client as Client, address);
                     if (inboxId) {
                         inboxIds.push(inboxId);
-                        xlog.log(' Resolved', address, 'to inbox ID:', inboxId);
+                        console.log(' Resolved', address, 'to inbox ID:', inboxId);
                     } else {
                         xlog.warn('Could not resolve inbox ID for:', address);
                     }
@@ -1064,7 +1064,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                 }
 
                 // Create group with inbox IDs using SDK v6 API
-                xlog.log(' Creating group with', inboxIds.length, 'inbox IDs');
+                console.log(' Creating group with', inboxIds.length, 'inbox IDs');
                 const group = await (client as Client).conversations.createGroup(inboxIds, groupOptions);
 
                 messageStore.addConversation({
@@ -1184,7 +1184,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
             }
 
             try {
-                xlog.log(' Updating group info:', { groupId, updates });
+                console.log(' Updating group info:', { groupId, updates });
 
                 // Sync all conversations first to ensure we have the latest state
                 xlog.debug('Syncing all conversations...');
@@ -1199,7 +1199,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                     return false;
                 }
 
-                xlog.log(' Found conversation, checking type...');
+                console.log(' Found conversation, checking type...');
                 const group = conversation as any;
 
                 // Check if it's actually a group (not a DM)
@@ -1222,7 +1222,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                         (m: any) => m.inboxId === (client as Client).inboxId
                     );
 
-                    xlog.log(' Current user member info:', {
+                    console.log(' Current user member info:', {
                         found: !!currentMember,
                         isAdmin: currentMember?.isAdmin,
                         isSuperAdmin: currentMember?.isSuperAdmin,
@@ -1232,7 +1232,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                     // Note: According to XMTP default policy, all members can update metadata
                     // But if custom permissions are set, we should check
                     if (currentMember && !currentMember.isAdmin && !currentMember.isSuperAdmin) {
-                        xlog.log(' User is not admin, but trying update (default policy allows all members)');
+                        console.log(' User is not admin, but trying update (default policy allows all members)');
                     }
                 }
 
@@ -1240,7 +1240,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                 let updateSuccess = true;
 
                 if (updates.name) {
-                    xlog.log(' Updating group name to:', updates.name);
+                    console.log(' Updating group name to:', updates.name);
                     try {
                         await group.updateName(updates.name);
                         xlog.debug('Group name updated successfully');
@@ -1255,7 +1255,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                     xlog.debug('Updating group image...');
                     try {
                         await group.updateImageUrl(updates.imageUrl);
-                        xlog.log(' Group image updated successfully');
+                        console.log(' Group image updated successfully');
                     } catch (imgErr) {
                         xlog.error(' Failed to update image:', imgErr);
                         updateSuccess = false;
@@ -1267,7 +1267,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                     xlog.debug('Updating group description...');
                     try {
                         await group.updateDescription(updates.description);
-                        xlog.log(' Group description updated successfully');
+                        console.log(' Group description updated successfully');
                     } catch (descErr) {
                         xlog.error(' Failed to update description:', descErr);
                         // Don't fail completely for description
@@ -1390,11 +1390,11 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
 
                 // Add optimistic message to the store
                 messageStore.addMessage(groupId, optimisticMessage);
-                xlog.log(' Added optimistic group message to UI');
+                console.log(' Added optimistic group message to UI');
 
                 // Actually send the message using sendText per SDK v6 API
                 await (conversation as any).sendText(sanitized);
-                xlog.log(' Group message sent successfully');
+                console.log(' Group message sent successfully');
 
                 // Note: The optimistic message will remain with its pending-* ID.
                 // When the real message arrives via stream, it will have a different ID.
@@ -1471,7 +1471,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
 
         // Only auto-connect if we don't have a connection attempt in progress
         if (!connectionAttemptedRef.current) {
-            xlog.log(' Auto-connecting...');
+            console.log(' Auto-connecting...');
             connect();
         }
     }, [authenticated, wallets, client, isConnecting, connect, restoreExistingClient]);
@@ -1510,7 +1510,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
         state: 'allowed' | 'denied'
     ): Promise<boolean> => {
         if (!client || USE_MOCK_XMTP) {
-            xlog.log(' setConversationConsent: no client or mock mode');
+            console.log(' setConversationConsent: no client or mock mode');
             return false;
         }
 
@@ -1544,7 +1544,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
         state: 'allowed' | 'denied'
     ): Promise<boolean> => {
         if (!client || USE_MOCK_XMTP) {
-            xlog.log(' setInboxIdConsent: no client or mock mode');
+            console.log(' setInboxIdConsent: no client or mock mode');
             return false;
         }
 
@@ -1558,7 +1558,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                 state: consentValue,
             }]);
 
-            xlog.log(' Set inbox consent to ' + state);
+            console.log(' Set inbox consent to ' + state);
             logSecurityEvent('Inbox consent updated: ' + inboxId + ' -> ' + state);
             return true;
         } catch (err) {
@@ -1635,7 +1635,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                 }
             }
 
-            xlog.log(' Loaded ' + requests.length + ' message requests');
+            console.log(' Loaded ' + requests.length + ' message requests');
             return requests;
         } catch (err) {
             xlog.error('Failed to load message requests:', err);
