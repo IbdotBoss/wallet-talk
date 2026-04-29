@@ -7,6 +7,35 @@
 
 import { validateAddress, logSecurityEvent } from './SecurityService';
 
+
+/**
+ * Safe localStorage access with try/catch for private/incognito mode support.
+ * Safari private mode throws QUOTA_EXCEEDED_ERROR on any storage operation.
+ */
+const safeLocalStorage = {
+  getItem(key: string): string | null {
+    try {
+      return safeLocalStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  },
+  setItem(key: string, value: string): void {
+    try {
+      safeLocalStorage.setItem(key, value);
+    } catch {
+      // Silently fail in private mode
+    }
+  },
+  removeItem(key: string): void {
+    try {
+      safeLocalStorage.removeItem(key);
+    } catch {
+      // Silently fail
+    }
+  },
+};
+
 const BLOCKLIST_STORAGE_KEY = 'antigravity_blocklist';
 
 /**
@@ -14,7 +43,7 @@ const BLOCKLIST_STORAGE_KEY = 'antigravity_blocklist';
  */
 function getBlocklist(): Set<string> {
     try {
-        const stored = localStorage.getItem(BLOCKLIST_STORAGE_KEY);
+        const stored = safeLocalStorage.getItem(BLOCKLIST_STORAGE_KEY);
         if (!stored) return new Set();
 
         const addresses: string[] = JSON.parse(stored);
@@ -30,7 +59,7 @@ function getBlocklist(): Set<string> {
 function saveBlocklist(blocklist: Set<string>): void {
     try {
         const addresses = Array.from(blocklist);
-        localStorage.setItem(BLOCKLIST_STORAGE_KEY, JSON.stringify(addresses));
+        safeLocalStorage.setItem(BLOCKLIST_STORAGE_KEY, JSON.stringify(addresses));
     } catch (error) {
         logSecurityEvent('Failed to save blocklist', { error });
     }
@@ -105,7 +134,7 @@ export function getBlockedAddresses(): string[] {
  */
 export function clearBlocklist(): void {
     try {
-        localStorage.removeItem(BLOCKLIST_STORAGE_KEY);
+        safeLocalStorage.removeItem(BLOCKLIST_STORAGE_KEY);
         logSecurityEvent('Blocklist cleared');
     } catch {
         // Silent fail
