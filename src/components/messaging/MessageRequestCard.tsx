@@ -45,10 +45,12 @@ export const MessageRequestCard: React.FC<MessageRequestCardProps> = ({
     const isGroup = conversation.type === 'group';
     const displayName = isGroup
         ? conversation.groupName || 'Group Chat'
-        : truncateAddress(conversation.peerAddress);
+        : truncateAddress(conversation.peerAddress || conversation.peerInboxId || '');
 
     // For LiquidGlassAvatar
-    const avatarAddress = isGroup ? conversation.topic : conversation.peerAddress;
+    const avatarAddress = isGroup
+        ? conversation.topic
+        : (conversation.peerAddress || conversation.peerInboxId || conversation.topic);
 
     return (
         <motion.div

@@ -19,7 +19,7 @@ export interface Message {
 }
 
 export interface Conversation {
-    peerAddress: string;         // For DMs: peer address. For groups: empty string
+    peerAddress: string;         // For DMs: peer's Ethereum address (0x...), or '' if unresolvable. For groups: ''
     topic: string;               // Unique conversation identifier
     type: 'dm' | 'group';        // Conversation type
     groupName?: string;          // For groups: display name
@@ -31,6 +31,88 @@ export interface Conversation {
     // XMTP consent state
     consentState?: 'allowed' | 'denied' | 'unknown';
     addedByInboxId?: string;     // For groups: who added you
+    peerInboxId?: string;        // For DMs: peer's XMTP inbox ID (64-char hex, no 0x)
+}
+
+// ============================================================================
+// PERSISTENCE HELPERS
+// ============================================================================
+// JSON.stringify/parse (used by the persist middleware's default storage)
+// turns Date fields into strings, so the shape read back from localStorage
+// only *looks* like Message/Conversation — timestamps are actually strings
+// until revived below.
+
+type PersistedMessage = Omit<Message, 'timestamp'> & { timestamp: Date | string };
+type PersistedConversation = Omit<Conversation, 'lastMessageTime'> & {
+    lastMessageTime?: Date | string;
+};
+
+interface PersistedState {
+    conversations: PersistedConversation[];
+    messages: Record<string, PersistedMessage[]>;
+    activeFilter: 'all' | 'dms' | 'groups' | 'requests';
+}
+
+interface RevivedState {
+    conversations: Conversation[];
+    messages: Record<string, Message[]>;
+    activeFilter: 'all' | 'dms' | 'groups' | 'requests';
+}
+
+const ETH_ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
+
+function toDate(value: Date | string | undefined | null): Date | undefined {
+    if (value == null) return undefined;
+    return value instanceof Date ? value : new Date(value);
+}
+
+/**
+ * Revives Date fields lost to JSON serialization, and (optionally) migrates
+ * legacy conversations whose `peerAddress` was mistakenly populated with an
+ * XMTP inbox ID instead of an Ethereum address, moving it to `peerInboxId`.
+ *
+ * Exported as a pure function so it can be unit tested directly and reused
+ * by both `migrate` (legacy versions) and `onRehydrateStorage` (every load).
+ */
+export function reviveAndMigrate(
+    raw: PersistedState,
+    options: { migrateInboxIds: boolean }
+): RevivedState {
+    const messages: Record<string, Message[]> = {};
+    for (const [topic, msgs] of Object.entries(raw.messages || {})) {
+        messages[topic] = (msgs || []).map((m) => ({
+            ...m,
+            timestamp: toDate(m.timestamp) as Date,
+        }));
+    }
+
+    const conversations: Conversation[] = (raw.conversations || []).map((c) => {
+        let peerAddress = c.peerAddress;
+        let peerInboxId = c.peerInboxId;
+
+        if (
+            options.migrateInboxIds &&
+            c.type === 'dm' &&
+            peerAddress &&
+            !ETH_ADDRESS_REGEX.test(peerAddress)
+        ) {
+            peerInboxId = peerAddress;
+            peerAddress = '';
+        }
+
+        return {
+            ...c,
+            peerAddress,
+            peerInboxId,
+            lastMessageTime: toDate(c.lastMessageTime),
+        };
+    });
+
+    return {
+        conversations,
+        messages,
+        activeFilter: raw.activeFilter,
+    };
 }
 
 interface MessageState {
@@ -292,17 +374,51 @@ export const useMessageStore = create<MessageState>()(
         }),
         {
             name: 'antigravity-messages',
+            version: 2,
             // Persist conversations AND messages now
             partialize: (state) => ({
                 conversations: state.conversations,
-                messages: Object.fromEntries(state.messages), // Convert Map to object for storage
+                // Convert Map to object for storage. Defensive: immediately after
+                // `migrate` runs, the merged (pre-hydration-callback) state briefly
+                // holds `messages` as a plain object rather than a Map (persist calls
+                // setItem() right after merging migrated state, before
+                // onRehydrateStorage gets a chance to rebuild the Map) — passing that
+                // straight through avoids crashing on Object.fromEntries(non-iterable).
+                messages:
+                    state.messages instanceof Map
+                        ? Object.fromEntries(state.messages)
+                        : state.messages,
                 activeFilter: state.activeFilter,
             }),
-            // Hydrate Map from object
+            // Hydrate Map from object, revive Dates that JSON turned into strings
             onRehydrateStorage: () => (state) => {
-                if (state && state.messages && !(state.messages instanceof Map)) {
-                    state.messages = new Map(Object.entries(state.messages));
+                if (!state) return;
+
+                const rawMessages: Record<string, PersistedMessage[]> =
+                    state.messages instanceof Map
+                        ? (Object.fromEntries(state.messages) as unknown as Record<string, PersistedMessage[]>)
+                        : (state.messages as unknown as Record<string, PersistedMessage[]>);
+
+                const revived = reviveAndMigrate(
+                    {
+                        conversations: state.conversations as unknown as PersistedConversation[],
+                        messages: rawMessages,
+                        activeFilter: state.activeFilter,
+                    },
+                    { migrateInboxIds: false }
+                );
+
+                state.conversations = revived.conversations;
+                state.messages = new Map(Object.entries(revived.messages));
+            },
+            // Migrate legacy persisted state (versions < 2): revive Dates and purge
+            // XMTP inbox IDs that were mistakenly stored in peerAddress.
+            migrate: (persistedState, version) => {
+                const raw = persistedState as PersistedState;
+                if (version < 2) {
+                    return reviveAndMigrate(raw, { migrateInboxIds: true });
                 }
+                return raw;
             },
         }
     )

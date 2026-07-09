@@ -62,7 +62,7 @@ function App() {
                             <Route path="/" element={<Onboarding />} />
                             {/* New 2-column messaging layout */}
                             <Route path="/messages" element={<MessagingLayout />} />
-                            <Route path="/messages/:address" element={<MessagingLayout />} />
+                            <Route path="/messages/:conversationId" element={<MessagingLayout />} />
                             <Route path="/settings" element={<Settings />} />
                         </Routes>
                     </motion.div>

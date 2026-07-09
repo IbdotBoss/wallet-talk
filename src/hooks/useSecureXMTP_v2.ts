@@ -1,21 +1,33 @@
 /**
  * useSecureXMTP - XMTP V3 client hook with Privy integration
- * 
+ *
  * Uses @xmtp/browser-sdk (V3) with proper signer format.
  * Supports both DM and Group conversations.
- * Includes MOCK MODE for UI verification when network is unstable.
  */
 
 import { useEffect, useCallback, useRef } from 'react';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
-// Dynamic import - SDK loaded only when needed to prevent WASM blocking React mount
-// Types are imported for TypeScript, actual SDK is dynamically imported in connect()
-import type { Client, Signer, Conversation, Group, Identifier } from '@xmtp/browser-sdk';
-import { IdentifierKind } from '@xmtp/browser-sdk';
+// Dynamic import - SDK loaded only when needed to prevent WASM blocking React mount.
+// Value imports (classes/enums) are re-exported from @xmtp/wasm-bindings, so importing
+// any of them eagerly at module scope would force-load the WASM binary on app boot.
+// Only type-only imports are safe to use statically; everything else goes through
+// loadXMTPSDK() below.
+import type {
+    Client,
+    Signer,
+    Conversation,
+    Group,
+    Dm,
+    Identifier,
+    ConsentState,
+    CreateGroupOptions,
+    InboxState,
+} from '@xmtp/browser-sdk';
 import { toBytes } from 'viem'; // Use viem's toBytes like official xmtp.chat
 import { useMessageStore, type Message as StoreMessage, type Conversation as StoreConversation } from '@/store/messageStore';
 import { sanitizeMessage, validateAddress, logSecurityEvent } from '@/lib/SecurityService';
 import { useXMTPStore, getGlobalXMTPClient, setGlobalXMTPClient } from '@/store/xmtpStore';
+import { XMTP_ENV } from '@/lib/xmtpConfig';
 
 // App version for XMTP analytics (recommended by XMTP docs)
 const APP_VERSION = 'wallet-talk/1.0.0';
@@ -26,61 +38,48 @@ const CONNECTION_TIMEOUT_MS = 60000; // 60 seconds
 // Max retry attempts for connection
 const MAX_CONNECTION_RETRIES = 3;
 
-// Toggle for development - set to true to test UI without real XMTP
-// Set to false for production to use real XMTP network
-const USE_MOCK_XMTP = false; // Testing with real XMTP using xmtp.chat-style config
-
-// Note: hexToBytes removed - using viem's toBytes instead (matches xmtp.chat)
-
 // SDK module references - populated on first connect via dynamic import
 let XMTPClient: typeof import('@xmtp/browser-sdk').Client | null = null;
 let XMTPConsentState: typeof import('@xmtp/browser-sdk').ConsentState | null = null;
 let XMTPConsentEntityType: typeof import('@xmtp/browser-sdk').ConsentEntityType | null = null;
+let XMTPIdentifierKind: typeof import('@xmtp/browser-sdk').IdentifierKind | null = null;
+let XMTPPermissionLevel: typeof import('@xmtp/browser-sdk').PermissionLevel | null = null;
+let XMTPSortDirection: typeof import('@xmtp/browser-sdk').SortDirection | null = null;
 
 // Helper to load SDK dynamically
 async function loadXMTPSDK() {
-    if (!XMTPClient || !XMTPConsentState || !XMTPConsentEntityType) {
+    if (
+        !XMTPClient ||
+        !XMTPConsentState ||
+        !XMTPConsentEntityType ||
+        !XMTPIdentifierKind ||
+        !XMTPPermissionLevel ||
+        !XMTPSortDirection
+    ) {
         console.log('[XMTP] Loading browser SDK dynamically...');
         const sdk = await import('@xmtp/browser-sdk');
         XMTPClient = sdk.Client;
         XMTPConsentState = sdk.ConsentState;
         XMTPConsentEntityType = sdk.ConsentEntityType;
+        XMTPIdentifierKind = sdk.IdentifierKind;
+        XMTPPermissionLevel = sdk.PermissionLevel;
+        XMTPSortDirection = sdk.SortDirection;
         console.log('[XMTP] SDK loaded successfully');
     }
     return {
         Client: XMTPClient,
         ConsentState: XMTPConsentState,
-        ConsentEntityType: XMTPConsentEntityType
+        ConsentEntityType: XMTPConsentEntityType,
+        IdentifierKind: XMTPIdentifierKind,
+        PermissionLevel: XMTPPermissionLevel,
+        SortDirection: XMTPSortDirection,
     };
 }
-
-// Helper to get or create database encryption key for OPFS persistence
-const getOrCreateDbEncryptionKey = async (address: string): Promise<Uint8Array> => {
-    const storageKey = `xmtp-db-key-${address.toLowerCase()}`;
-    let keyHex = localStorage.getItem(storageKey);
-
-    if (!keyHex) {
-        const key = crypto.getRandomValues(new Uint8Array(32));
-        keyHex = Array.from(key).map(b => b.toString(16).padStart(2, '0')).join('');
-        localStorage.setItem(storageKey, keyHex);
-    }
-
-    // Convert hex string to Uint8Array
-    const matches = keyHex.match(/.{2}/g);
-    if (!matches) {
-        // If invalid hex format, regenerate key
-        const key = crypto.getRandomValues(new Uint8Array(32));
-        keyHex = Array.from(key).map(b => b.toString(16).padStart(2, '0')).join('');
-        localStorage.setItem(storageKey, keyHex);
-        return key;
-    }
-
-    return new Uint8Array(matches.map(byte => parseInt(byte, 16)));
-};
 
 // Helper to resolve Ethereum address to inbox ID using XMTP V3 API
 const getInboxIdFromAddress = async (client: Client, address: string): Promise<string | null> => {
     try {
+        const { IdentifierKind } = await loadXMTPSDK();
         const inboxId = await client.fetchInboxIdByIdentifier({
             identifier: address.toLowerCase(),
             identifierKind: IdentifierKind.Ethereum,
@@ -92,121 +91,50 @@ const getInboxIdFromAddress = async (client: Client, address: string): Promise<s
     }
 };
 
-// ============================================================================
-// MOCK CLASSES FOR TESTING
-// ============================================================================
+// Helper to batch-resolve inbox IDs to their Ethereum addresses.
+// Falls back to the local (unsynced) inbox state if the network call fails,
+// and leaves an address as '' when it can't be resolved either way.
+const resolveInboxAddresses = async (
+    client: Client,
+    inboxIds: string[]
+): Promise<Map<string, string>> => {
+    const result = new Map<string, string>();
+    if (inboxIds.length === 0) return result;
 
-class MockConversation {
-    peerInboxId: string;
-    id: string;
-    type: 'dm' | 'group' = 'dm';
+    try {
+        const { IdentifierKind } = await loadXMTPSDK();
 
-    constructor(peerAddress: string) {
-        this.peerInboxId = peerAddress;
-        this.id = `mock-dm-${peerAddress}-${Date.now()}`;
+        let inboxStates: InboxState[];
+        try {
+            inboxStates = await client.preferences.fetchInboxStates(inboxIds);
+        } catch (err) {
+            console.warn('[XMTP] fetchInboxStates failed, falling back to local getInboxStates:', err);
+            inboxStates = await client.preferences.getInboxStates(inboxIds);
+        }
+
+        for (const state of inboxStates) {
+            const ethIdentifier = state.accountIdentifiers.find(
+                (i) => i.identifierKind === IdentifierKind.Ethereum
+            );
+            result.set(state.inboxId, ethIdentifier ? ethIdentifier.identifier.toLowerCase() : '');
+        }
+    } catch (err) {
+        console.error('[XMTP] Failed to resolve inbox addresses:', err);
     }
 
-    async messages(_opts?: any) { return []; }
-    async send(content: string) {
-        return { id: Date.now().toString(), sentAtNs: BigInt(Date.now() * 1000000), content };
-    }
-    async sync() { }
-}
+    return result;
+};
 
-class MockGroup {
-    id: string;
-    name: string;
-    imageUrl: string;
-    description: string;
-    members: { inboxId: string; address: string }[] = [];
-    type: 'dm' | 'group' = 'group';
-
-    constructor(name: string, memberAddresses: string[]) {
-        this.id = `mock-group-${Date.now()}`;
-        this.name = name;
-        this.imageUrl = '';
-        this.description = '';
-        this.members = memberAddresses.map(addr => ({ inboxId: addr, address: addr }));
-    }
-
-    async messages(_opts?: any) { return []; }
-    async send(content: string) {
-        return { id: Date.now().toString(), sentAtNs: BigInt(Date.now() * 1000000), content };
-    }
-    async sync() { }
-    async addMembers(inboxIds: string[]) {
-        inboxIds.forEach(id => this.members.push({ inboxId: id, address: id }));
-    }
-    async removeMembers(inboxIds: string[]) {
-        this.members = this.members.filter(m => !inboxIds.includes(m.inboxId));
-    }
-    async leaveGroup() { }
-    async updateName(name: string) { this.name = name; }
-    async updateImageUrl(url: string) { this.imageUrl = url; }
-    async updateDescription(desc: string) { this.description = desc; }
-}
-
-class MockClient {
-    address: string;
-    inboxId: string;
-    private mockGroups: MockGroup[] = [];
-    private mockDms: MockConversation[] = [];
-
-    conversations: {
-        list: () => Promise<(MockConversation | MockGroup)[]>;
-        listDms: () => Promise<MockConversation[]>;
-        listGroups: () => Promise<MockGroup[]>;
-        newDm: (peer: string) => Promise<MockConversation>;
-        newGroup: (inboxIds: string[], options?: any) => Promise<MockGroup>;
-        getConversationById: (id: string) => Promise<MockConversation | MockGroup | null>;
-        streamAllMessages: () => AsyncGenerator<any>;
-        syncAll: () => Promise<void>;
-    };
-
-    constructor(address: string) {
-        this.address = address;
-        this.inboxId = address;
-
-        const self = this;
-        this.conversations = {
-            list: async () => [...self.mockDms, ...self.mockGroups],
-            listDms: async () => self.mockDms,
-            listGroups: async () => self.mockGroups,
-            newDm: async (peer: string) => {
-                const dm = new MockConversation(peer);
-                self.mockDms.push(dm);
-                return dm;
-            },
-            newGroup: async (inboxIds: string[], options?: any) => {
-                const group = new MockGroup(options?.name || 'New Group', inboxIds);
-                if (options?.imageUrl) group.imageUrl = options.imageUrl;
-                if (options?.description) group.description = options.description;
-                self.mockGroups.push(group);
-                return group;
-            },
-            getConversationById: async (id: string) => {
-                return self.mockDms.find(d => d.id === id) ||
-                    self.mockGroups.find(g => g.id === id) ||
-                    null;
-            },
-            streamAllMessages: async function* () {
-                await new Promise(r => setTimeout(r, 100));
-            },
-            syncAll: async () => { },
-        };
-    }
-
-    async canMessage(identifiers: Identifier[]) {
-        const result = new Map<string, boolean>();
-        identifiers.forEach(i => result.set(i.identifier.toLowerCase(), true));
-        return result;
-    }
-
-    static async canMessage(identifiers: Identifier[]) {
-        const result = new Map<string, boolean>();
-        identifiers.forEach(i => result.set(i.identifier.toLowerCase(), true));
-        return result;
-    }
+// Maps the SDK's ConsentState enum value to the store's string union.
+// Takes the already-loaded ConsentState enum object (via loadXMTPSDK) rather
+// than loading it itself, since callers already have it in scope.
+function mapConsent(
+    state: ConsentState,
+    ConsentStateEnum: typeof import('@xmtp/browser-sdk').ConsentState
+): 'allowed' | 'denied' | 'unknown' {
+    if (state === ConsentStateEnum.Allowed) return 'allowed';
+    if (state === ConsentStateEnum.Denied) return 'denied';
+    return 'unknown';
 }
 
 // ============================================================================
@@ -228,7 +156,7 @@ export interface GroupMember {
 
 interface UseSecureXMTPReturn {
     // State
-    client: Client | MockClient | null;
+    client: Client | null;
     isConnecting: boolean;
     isConnected: boolean;
     error: string | null;
@@ -240,11 +168,12 @@ interface UseSecureXMTPReturn {
 
     // DM methods
     sendMessage: (peerAddress: string, content: string) => Promise<boolean>;
-    startConversation: (peerAddress: string) => Promise<Conversation | MockConversation | null>;
+    startConversation: (peerAddress: string) => Promise<Conversation | null>;
     checkCanMessage: (addresses: string[]) => Promise<Map<string, boolean>>;
+    loadMessageHistory: (conversationId: string) => Promise<void>;
 
     // Group methods
-    createGroup: (memberAddresses: string[], options?: GroupOptions) => Promise<Group | MockGroup | null>;
+    createGroup: (memberAddresses: string[], options?: GroupOptions) => Promise<Group | null>;
     addGroupMembers: (groupId: string, memberAddresses: string[]) => Promise<boolean>;
     removeGroupMembers: (groupId: string, memberAddresses: string[]) => Promise<boolean>;
     leaveGroup: (groupId: string) => Promise<boolean>;
@@ -336,75 +265,15 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
         setConnecting(true);
         setError(null);
 
-        // MOCK MODE
-        if (USE_MOCK_XMTP) {
-            console.log('[XMTP] MOCK MODE ENABLED - Simulating connection...');
-            try {
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                const mockClient = new MockClient(wallet.address);
-                setClient(mockClient, wallet.address);
-                setGlobalXMTPClient(mockClient);
-                logSecurityEvent('XMTP Mock client connected', { address: wallet.address });
-                setConnecting(false);
-                connectionInProgressRef.current = false;
-                return;
-            } catch (e) {
-                setError('Mock connection failed');
-                setConnecting(false);
-                connectionInProgressRef.current = false;
-                return;
-            }
-        }
-
-        // REAL XMTP CONNECTION
         try {
             console.log('[XMTP] Starting connection sequence...');
 
-            // Network diagnostics - test if XMTP endpoints are reachable
-            console.log('[XMTP] Running network diagnostics...');
-            try {
-                // Test dev network gRPC-web endpoint
-                const devEndpoint = 'https://grpc.dev.xmtp.network';
-                const prodEndpoint = 'https://grpc.xmtp.network';
-
-                // Simple fetch to check if endpoints respond
-                const devTest = fetch(devEndpoint, {
-                    method: 'HEAD',
-                    mode: 'no-cors' // Avoid CORS issues for basic reachability test
-                }).then(() => {
-                    console.log('[XMTP] Dev endpoint reachable:', devEndpoint);
-                    return true;
-                }).catch(err => {
-                    console.warn('[XMTP] Dev endpoint NOT reachable:', err.message);
-                    return false;
-                });
-
-                const prodTest = fetch(prodEndpoint, {
-                    method: 'HEAD',
-                    mode: 'no-cors'
-                }).then(() => {
-                    console.log('[XMTP] Prod endpoint reachable:', prodEndpoint);
-                    return true;
-                }).catch(err => {
-                    console.warn('[XMTP] Prod endpoint NOT reachable:', err.message);
-                    return false;
-                });
-
-                const [devReachable, prodReachable] = await Promise.all([devTest, prodTest]);
-                console.log('[XMTP] Network diagnostics complete:', { devReachable, prodReachable });
-
-                if (!devReachable && !prodReachable) {
-                    console.error('[XMTP] CRITICAL: Neither XMTP endpoint is reachable!');
-                    console.error('[XMTP] This may be due to:');
-                    console.error('  - Firewall/VPN blocking connections');
-                    console.error('  - Browser extension blocking requests');
-                    console.error('  - Network connectivity issues');
-                }
-            } catch (diagErr) {
-                console.warn('[XMTP] Network diagnostics error:', diagErr);
-            }
-
             const provider = await wallet.getEthereumProvider();
+
+            // Load SDK dynamically before building the signer (it needs IdentifierKind)
+            console.log('[XMTP] About to load SDK dynamically...');
+            const { Client: SDKClient, IdentifierKind } = await loadXMTPSDK();
+            console.log('[XMTP] SDK module loaded, about to call Client.create...');
 
             // Create signer matching official xmtp.chat implementation
             const signer: Signer = {
@@ -432,36 +301,24 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
 
             console.log('[XMTP] Creating Client...');
             console.log('[XMTP] Wallet address:', wallet.address.toLowerCase());
-            console.log('[XMTP] Using environment: dev'); // Using dev network
+            console.log('[XMTP] Using environment:', XMTP_ENV);
             console.log('[XMTP] Timeout set to:', CONNECTION_TIMEOUT_MS, 'ms');
             console.log('--- XMTP HOOK V2 ACTIVE ---');
 
-            // Load SDK dynamically
-            console.log('[XMTP] About to load SDK dynamically...');
-            const { Client: SDKClient } = await loadXMTPSDK();
-            console.log('[XMTP] SDK module loaded, about to call Client.create...');
-
-            // Create client with dev environment
             const createClient = async () => {
-                // NOTE: OPFS persistence is DISABLED due to browser limitations
-                // - Browser SDK's SyncAccessHandle Pool VFS doesn't support multiple connections
-                // - dbEncryptionKey is ignored in browser environments anyway
-                // - Session-unique paths don't help because sessionStorage persists across reloads
-                // See: https://docs.xmtp.org/chat-apps/core-messaging/create-a-client
-
+                // Persist the local database in OPFS, keyed per wallet address, so
+                // returning users don't need to re-sync their full history from
+                // scratch on every page load.
                 try {
                     console.log('[XMTP] Calling Client.create() NOW...');
                     console.log('[XMTP] Signer type:', signer.type);
                     console.log('[XMTP] Signer identifier:', signer.getIdentifier());
-                    console.log('[XMTP] Signer type:', signer.type);
-                    console.log('[XMTP] Signer identifier:', signer.getIdentifier());
 
-                    // Enable persistence with user-specific DB path
                     const dbPath = `xmtp-${wallet.address.toLowerCase()}.db`;
                     console.log('[XMTP] Using dbPath:', dbPath);
 
                     const client = await SDKClient.create(signer, {
-                        env: 'dev',
+                        env: XMTP_ENV,
                         appVersion: APP_VERSION,
                         // Enable persistence for offline support and faster loads
                         dbPath: dbPath,
@@ -560,37 +417,40 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
     // CONVERSATION LOADING
     // ========================================================================
 
-    const loadConversations = async (xmtpClient: Client | MockClient) => {
-        if (USE_MOCK_XMTP) return;
-
+    const loadConversations = async (xmtpClient: Client) => {
         try {
-            // Load ConsentState dynamically and sync with consent filter per XMTP v6 API recommendations
+            // Sync with both Allowed and Unknown consent so message requests show up too
             const { ConsentState } = await loadXMTPSDK();
-            await xmtpClient.conversations.syncAll([ConsentState.Allowed]);
+            await xmtpClient.conversations.syncAll([ConsentState.Allowed, ConsentState.Unknown]);
 
             // Load both DMs and Groups
             const [dms, groups] = await Promise.all([
-                (xmtpClient as Client).conversations.listDms(),
-                (xmtpClient as Client).conversations.listGroups(),
+                xmtpClient.conversations.listDms(),
+                xmtpClient.conversations.listGroups(),
             ]);
 
             console.log('[XMTP] DMs found:', dms.length, 'Groups found:', groups.length);
 
+            // Resolve every DM's peer inbox ID, then batch-resolve all of them to
+            // Ethereum addresses in a single call.
+            const peerInboxIds = await Promise.all(dms.map((dm) => dm.peerInboxId()));
+            const uniqueInboxIds = Array.from(new Set(peerInboxIds));
+            const addressByInboxId = await resolveInboxAddresses(xmtpClient, uniqueInboxIds);
+
             // Process DMs
             const dmConversations: StoreConversation[] = await Promise.all(
-                dms.map(async (c: any) => {
-                    const messages = await c.messages({ limit: BigInt(1) });
+                dms.map(async (dm, index) => {
+                    const messages = await dm.messages({ limit: BigInt(1) });
                     const lastMsg = messages[0];
-
-                    const peerId = typeof c.peerInboxId === 'function'
-                        ? await c.peerInboxId()
-                        : (c.peerInboxId || '');
+                    const peerInboxId = peerInboxIds[index];
 
                     return {
-                        peerAddress: String(peerId),
-                        topic: c.id,
+                        peerAddress: addressByInboxId.get(peerInboxId) ?? '',
+                        peerInboxId,
+                        topic: dm.id,
                         type: 'dm' as const,
-                        lastMessage: lastMsg ? sanitizeMessage(lastMsg.content as string) : undefined,
+                        consentState: mapConsent(await dm.consentState(), ConsentState),
+                        lastMessage: lastMsg ? sanitizeMessage(getMessageText(lastMsg.content)) : undefined,
                         lastMessageTime: lastMsg?.sentAtNs ? new Date(Number(lastMsg.sentAtNs) / 1_000_000) : undefined,
                         unreadCount: 0,
                     };
@@ -599,7 +459,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
 
             // Process Groups
             const groupConversations: StoreConversation[] = await Promise.all(
-                groups.map(async (g: any) => {
+                groups.map(async (g) => {
                     const messages = await g.messages({ limit: BigInt(1) });
                     const lastMsg = messages[0];
                     const members = await g.members();
@@ -611,7 +471,8 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                         groupName: g.name || 'Unnamed Group',
                         groupImageUrl: g.imageUrl,
                         memberCount: members.length,
-                        lastMessage: lastMsg ? sanitizeMessage(lastMsg.content as string) : undefined,
+                        consentState: mapConsent(await g.consentState(), ConsentState),
+                        lastMessage: lastMsg ? sanitizeMessage(getMessageText(lastMsg.content)) : undefined,
                         lastMessageTime: lastMsg?.sentAtNs ? new Date(Number(lastMsg.sentAtNs) / 1_000_000) : undefined,
                         unreadCount: 0,
                     };
@@ -628,17 +489,15 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
     // MESSAGE STREAMING
     // ========================================================================
 
-    const startMessageStream = async (xmtpClient: Client | MockClient) => {
-        if (USE_MOCK_XMTP) return;
-
+    const startMessageStream = async (xmtpClient: Client) => {
         try {
             // Use dynamically loaded ConsentState
             const { ConsentState } = await loadXMTPSDK();
 
-            // Stream with proper callbacks and Allowed-only consent per XMTP best practices
-            // This ensures spam conversations don't consume resources or pollute local storage
-            const stream = await (xmtpClient as Client).conversations.streamAllMessages({
-                consentStates: [ConsentState.Allowed],
+            // Stream with proper callbacks. Include Unknown so brand-new inbound
+            // conversations (message requests) show up live without a manual refresh.
+            const stream = await xmtpClient.conversations.streamAllMessages({
+                consentStates: [ConsentState.Allowed, ConsentState.Unknown],
                 retryAttempts: 10,
                 retryDelay: 20000, // 20 seconds between retries
                 onError: (error: Error) => {
@@ -684,6 +543,59 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
         return '';
     };
 
+    // When a message arrives for a conversation we don't have locally yet (e.g. a
+    // brand-new inbound DM or group invite), fetch and add it to the store so it
+    // shows up live - typically in the Requests tab, since its consent is Unknown.
+    const addNewConversationFromMessage = async (conversationId: string) => {
+        try {
+            const xmtpClient = getGlobalXMTPClient() as Client | null;
+            if (!xmtpClient) return;
+
+            const conv = await xmtpClient.conversations.getConversationById(conversationId);
+            if (!conv) return;
+
+            // Re-check in case another in-flight call already added it
+            if (useMessageStore.getState().conversations.some((c) => c.topic === conversationId)) {
+                return;
+            }
+
+            const { ConsentState } = await loadXMTPSDK();
+            const consentState = mapConsent(await conv.consentState(), ConsentState);
+            const isDm = typeof (conv as Dm).peerInboxId === 'function';
+
+            if (isDm) {
+                const dm = conv as Dm;
+                const peerInboxId = await dm.peerInboxId();
+                const addressByInboxId = await resolveInboxAddresses(xmtpClient, [peerInboxId]);
+
+                messageStore.addConversation({
+                    peerAddress: addressByInboxId.get(peerInboxId) ?? '',
+                    peerInboxId,
+                    topic: dm.id,
+                    type: 'dm',
+                    unreadCount: 0,
+                    consentState,
+                });
+            } else {
+                const group = conv as Group;
+                const members = await group.members();
+
+                messageStore.addConversation({
+                    peerAddress: '',
+                    topic: group.id,
+                    type: 'group',
+                    groupName: group.name || 'Unnamed Group',
+                    groupImageUrl: group.imageUrl,
+                    memberCount: members.length,
+                    unreadCount: 0,
+                    consentState,
+                });
+            }
+        } catch (err) {
+            console.error('[XMTP] Failed to add new conversation from incoming message:', err);
+        }
+    };
+
     const handleIncomingMessage = (message: unknown) => {
         const msg = message as any;
 
@@ -710,6 +622,12 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
 
         const conversationId = msg.conversationId;
         const isSentByMe = senderInboxId === myInboxId;
+
+        // If this message belongs to a conversation we don't know about yet, add it
+        // (fire-and-forget so we don't block message handling on a network round-trip).
+        if (conversationId && !useMessageStore.getState().conversations.some((c) => c.topic === conversationId)) {
+            void addNewConversationFromMessage(conversationId);
+        }
 
         // RECONCILIATION LOGIC
         if (isSentByMe && conversationId) {
@@ -754,22 +672,17 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
     // ========================================================================
 
     const checkCanMessage = useCallback(async (addresses: string[]): Promise<Map<string, boolean>> => {
+        const { Client: SDKClient, IdentifierKind } = await loadXMTPSDK();
         const identifiers: Identifier[] = addresses.map(addr => ({
             identifier: addr,
             identifierKind: IdentifierKind.Ethereum,
         }));
 
-        if (USE_MOCK_XMTP) {
-            return MockClient.canMessage(identifiers);
-        }
-
-        // Use dynamically loaded Client
-        const { Client: SDKClient } = await loadXMTPSDK();
-        return SDKClient.canMessage(identifiers, 'dev');
+        return SDKClient.canMessage(identifiers, XMTP_ENV);
     }, []);
 
     const startConversation = useCallback(
-        async (peerAddress: string): Promise<Conversation | MockConversation | null> => {
+        async (peerAddress: string): Promise<Conversation | null> => {
             console.log('[XMTP] startConversation called with:', peerAddress);
 
             if (!client) {
@@ -799,7 +712,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
 
                 // V3 API: Resolve address to inbox ID before creating DM
                 console.log('[XMTP] Resolving address to inbox ID...');
-                const peerInboxId = await getInboxIdFromAddress(client as Client, peerAddress);
+                const peerInboxId = await getInboxIdFromAddress(client, peerAddress);
 
                 if (!peerInboxId) {
                     console.log('[XMTP] Failed to resolve inbox ID for address:', peerAddress);
@@ -811,19 +724,21 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
 
                 // Create or get existing DM using inbox ID
                 console.log('[XMTP] Creating DM with inbox ID:', peerInboxId);
-                const dm = await (client as Client).conversations.createDm(peerInboxId);
+                const dm = await client.conversations.createDm(peerInboxId);
                 console.log('[XMTP] DM created:', dm.id);
 
                 // Add to store
                 messageStore.addConversation({
                     peerAddress: peerAddress,
+                    peerInboxId,
                     topic: dm.id,
                     type: 'dm',
                     unreadCount: 0,
+                    consentState: 'allowed',
                 });
 
                 logSecurityEvent('DM conversation started', { peerAddress });
-                return dm as Conversation | MockConversation;
+                return dm;
             } catch (err) {
                 console.error('[XMTP] Start conversation error:', err);
                 console.error('[XMTP] Error details:', {
@@ -856,44 +771,16 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                 return false;
             }
 
-            // MOCK SEND
-            if (USE_MOCK_XMTP) {
-                await new Promise(r => setTimeout(r, 500));
-                const mockTopic = `mock-dm-${peerAddress}`;
-
-                let exists = messageStore.conversations.find(c => c.peerAddress === peerAddress);
-                if (!exists) {
-                    messageStore.addConversation({
-                        peerAddress,
-                        topic: mockTopic,
-                        type: 'dm',
-                        unreadCount: 0,
-                    });
-                }
-
-                messageStore.addMessage(exists ? exists.topic : mockTopic, {
-                    id: Date.now().toString(),
-                    senderAddress: client.inboxId || '',
-                    content: sanitized,
-                    timestamp: new Date(),
-                    isSent: true,
-                });
-
-                return true;
-            }
-
-            // REAL SEND
             try {
                 // V3 API: Resolve address to inbox ID
-                const peerInboxId = await getInboxIdFromAddress(client as Client, peerAddress);
+                const peerInboxId = await getInboxIdFromAddress(client, peerAddress);
 
                 if (!peerInboxId) {
                     setError('Could not resolve inbox ID for this address');
                     return false;
                 }
 
-                const dms = await (client as Client).conversations.listDms();
-                let conversation = dms.find((dm: any) => String(dm.peerInboxId) === peerInboxId);
+                let conversation = await client.conversations.getDmByInboxId(peerInboxId);
 
                 if (!conversation) {
                     const canMessage = await checkCanMessage([peerAddress]);
@@ -902,14 +789,14 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                         return false;
                     }
                     // Use inbox ID to create new DM with SDK v6 API
-                    conversation = await (client as Client).conversations.createDm(peerInboxId);
+                    conversation = await client.conversations.createDm(peerInboxId);
                 }
 
                 // Optimistic update - add to store immediately for instant UI feedback
                 const optimisticMessageId = `pending-${crypto.randomUUID()}`;
                 const optimisticMessage: StoreMessage = {
                     id: optimisticMessageId,
-                    senderAddress: (client as Client).inboxId || '',
+                    senderAddress: client.inboxId || '',
                     content: sanitized,
                     timestamp: new Date(),
                     isSent: true, // Always true for messages we send
@@ -942,11 +829,64 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
     );
 
     // ========================================================================
+    // MESSAGE HISTORY
+    // ========================================================================
+
+    const loadMessageHistory = useCallback(async (conversationId: string): Promise<void> => {
+        if (!client) return;
+
+        try {
+            const conversation = await client.conversations.getConversationById(conversationId);
+            if (!conversation) return;
+
+            const { SortDirection } = await loadXMTPSDK();
+
+            await conversation.sync();
+            const raw = await conversation.messages({ limit: 50n, direction: SortDirection.Descending });
+            const ascending = [...raw].reverse();
+
+            const myInboxId = (client.inboxId || '').toLowerCase();
+
+            const fetched: StoreMessage[] = [];
+            for (const msg of ascending) {
+                const text = getMessageText(msg.content);
+                if (!text) continue; // drop reactions/system messages/etc.
+
+                fetched.push({
+                    id: msg.id,
+                    senderAddress: msg.senderInboxId,
+                    content: sanitizeMessage(text),
+                    timestamp: new Date(Number(msg.sentAtNs) / 1_000_000),
+                    isSent: msg.senderInboxId.toLowerCase() === myInboxId,
+                });
+            }
+
+            const fetchedContents = new Set(fetched.map((m) => m.content));
+
+            // Keep optimistic messages that haven't been reconciled into the fetched
+            // history yet; everything else from the existing store is superseded by
+            // the canonical fetched history.
+            const existing = useMessageStore.getState().messages.get(conversationId) || [];
+            const keptOptimistic = existing.filter(
+                (m) => m.id.startsWith('pending-') && !fetchedContents.has(m.content)
+            );
+
+            const merged = [...fetched, ...keptOptimistic].sort(
+                (a, b) => a.timestamp.getTime() - b.timestamp.getTime()
+            );
+
+            messageStore.setMessages(conversationId, merged);
+        } catch (err) {
+            console.error('[XMTP] Load message history error:', err);
+        }
+    }, [client, messageStore]);
+
+    // ========================================================================
     // GROUP METHODS
     // ========================================================================
 
     const createGroup = useCallback(
-        async (memberAddresses: string[], options?: GroupOptions): Promise<Group | MockGroup | null> => {
+        async (memberAddresses: string[], options?: GroupOptions): Promise<Group | null> => {
             if (!client) {
                 setError('Not connected to XMTP');
                 return null;
@@ -971,30 +911,10 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                     return null;
                 }
 
-                // MOCK CREATE
-                if (USE_MOCK_XMTP) {
-                    await new Promise(r => setTimeout(r, 500));
-                    const group = await (client as MockClient).conversations.newGroup(memberAddresses, options);
-
-                    messageStore.addConversation({
-                        peerAddress: '',
-                        topic: group.id,
-                        type: 'group',
-                        groupName: options?.name || 'New Group',
-                        groupImageUrl: options?.imageUrl,
-                        memberCount: memberAddresses.length + 1, // +1 for self
-                        unreadCount: 0,
-                    });
-
-                    logSecurityEvent('Group created (mock)', { memberCount: memberAddresses.length });
-                    return group;
-                }
-
-                // REAL CREATE - Cast options to any since SDK types may be outdated
-                const groupOptions: any = {
-                    name: options?.name,
-                    imageUrl: options?.imageUrl,
-                    description: options?.description,
+                const groupOptions: CreateGroupOptions = {
+                    groupName: options?.name,
+                    groupImageUrlSquare: options?.imageUrl,
+                    groupDescription: options?.description,
                 };
 
                 // V3 API: Resolve all member addresses to inbox IDs
@@ -1002,7 +922,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                 const inboxIds: string[] = [];
 
                 for (const address of memberAddresses) {
-                    const inboxId = await getInboxIdFromAddress(client as Client, address);
+                    const inboxId = await getInboxIdFromAddress(client, address);
                     if (inboxId) {
                         inboxIds.push(inboxId);
                         console.log('[XMTP] Resolved', address, 'to inbox ID:', inboxId);
@@ -1023,7 +943,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
 
                 // Create group with inbox IDs using SDK v6 API
                 console.log('[XMTP] Creating group with', inboxIds.length, 'inbox IDs');
-                const group = await (client as Client).conversations.createGroup(inboxIds, groupOptions);
+                const group = await client.conversations.createGroup(inboxIds, groupOptions);
 
                 messageStore.addConversation({
                     peerAddress: '',
@@ -1052,12 +972,18 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
 
             try {
                 const conversation = await client.conversations.getConversationById(groupId);
-                if (!conversation || !('addMembers' in conversation)) {
+                if (!conversation || !('addMembersByIdentifiers' in conversation)) {
                     setError('Group not found');
                     return false;
                 }
 
-                await (conversation as any).addMembers(memberAddresses);
+                const { IdentifierKind } = await loadXMTPSDK();
+                const identifiers: Identifier[] = memberAddresses.map((addr) => ({
+                    identifier: addr.toLowerCase(),
+                    identifierKind: IdentifierKind.Ethereum,
+                }));
+
+                await conversation.addMembersByIdentifiers(identifiers);
                 logSecurityEvent('Group members added', { groupId, count: memberAddresses.length });
                 return true;
             } catch (err) {
@@ -1075,12 +1001,18 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
 
             try {
                 const conversation = await client.conversations.getConversationById(groupId);
-                if (!conversation || !('removeMembers' in conversation)) {
+                if (!conversation || !('removeMembersByIdentifiers' in conversation)) {
                     setError('Group not found');
                     return false;
                 }
 
-                await (conversation as any).removeMembers(memberAddresses);
+                const { IdentifierKind } = await loadXMTPSDK();
+                const identifiers: Identifier[] = memberAddresses.map((addr) => ({
+                    identifier: addr.toLowerCase(),
+                    identifierKind: IdentifierKind.Ethereum,
+                }));
+
+                await conversation.removeMembersByIdentifiers(identifiers);
                 logSecurityEvent('Group members removed', { groupId, count: memberAddresses.length });
                 return true;
             } catch (err) {
@@ -1098,12 +1030,15 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
 
             try {
                 const conversation = await client.conversations.getConversationById(groupId);
-                if (!conversation || !('leaveGroup' in conversation)) {
+                if (!conversation || !('requestRemoval' in conversation)) {
                     setError('Group not found');
                     return false;
                 }
 
-                await (conversation as any).leaveGroup();
+                // XMTP has no direct "leave" call - leaving is modeled as a removal
+                // request that the group processes once it syncs.
+                await conversation.requestRemoval();
+                messageStore.removeConversation(groupId);
                 logSecurityEvent('Left group', { groupId });
                 return true;
             } catch (err) {
@@ -1112,30 +1047,11 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                 return false;
             }
         },
-        [client]
+        [client, messageStore]
     );
 
     const updateGroupInfo = useCallback(
         async (groupId: string, updates: GroupOptions): Promise<boolean> => {
-            // Handle mock mode
-            if (USE_MOCK_XMTP) {
-                console.log('[XMTP Mock] Updating group info:', { groupId, updates });
-                // Update local store
-                const { conversations, setConversations } = useMessageStore.getState();
-                const updated = conversations.map(c => {
-                    if (c.topic === groupId) {
-                        return {
-                            ...c,
-                            groupName: updates.name || c.groupName,
-                            groupImageUrl: updates.imageUrl || c.groupImageUrl,
-                        };
-                    }
-                    return c;
-                });
-                setConversations(updated);
-                return true;
-            }
-
             if (!client) {
                 setError('Not connected to XMTP');
                 return false;
@@ -1146,11 +1062,11 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
 
                 // Sync all conversations first to ensure we have the latest state
                 console.log('[XMTP] Syncing all conversations...');
-                const { ConsentState } = await loadXMTPSDK();
-                await (client as Client).conversations.syncAll([ConsentState.Allowed]);
+                const { ConsentState, PermissionLevel } = await loadXMTPSDK();
+                await client.conversations.syncAll([ConsentState.Allowed, ConsentState.Unknown]);
 
                 // Get the group
-                const conversation = await client.conversations.getConversationById(groupId);
+                const conversation = await (client as Client).conversations.getConversationById(groupId);
                 if (!conversation) {
                     console.error('[XMTP] Group not found with ID:', groupId);
                     setError('Group not found');
@@ -1158,40 +1074,38 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                 }
 
                 console.log('[XMTP] Found conversation, checking type...');
-                const group = conversation as any;
 
                 // Check if it's actually a group (not a DM)
-                if (!('updateName' in group)) {
+                if (!('updateName' in conversation)) {
                     console.error('[XMTP] Conversation is not a group');
                     setError('This is not a group conversation');
                     return false;
                 }
 
+                const group = conversation;
+
                 // Sync the group specifically
-                if ('sync' in group) {
-                    console.log('[XMTP] Syncing group...');
-                    await group.sync();
-                }
+                console.log('[XMTP] Syncing group...');
+                await group.sync();
 
                 // Check if user has permission by getting members and checking admin status
-                if ('members' in group) {
-                    const members = await group.members();
-                    const currentMember = members.find(
-                        (m: any) => m.inboxId === (client as Client).inboxId
-                    );
+                const members = await group.members();
+                const currentMember = members.find((m) => m.inboxId === client.inboxId);
 
-                    console.log('[XMTP] Current user member info:', {
-                        found: !!currentMember,
-                        isAdmin: currentMember?.isAdmin,
-                        isSuperAdmin: currentMember?.isSuperAdmin,
-                        inboxId: (client as Client).inboxId
-                    });
+                console.log('[XMTP] Current user member info:', {
+                    found: !!currentMember,
+                    permissionLevel: currentMember?.permissionLevel,
+                    inboxId: client.inboxId,
+                });
 
-                    // Note: According to XMTP default policy, all members can update metadata
-                    // But if custom permissions are set, we should check
-                    if (currentMember && !currentMember.isAdmin && !currentMember.isSuperAdmin) {
-                        console.log('[XMTP] User is not admin, but trying update (default policy allows all members)');
-                    }
+                // Note: According to XMTP default policy, all members can update metadata
+                // But if custom permissions are set, we should check
+                if (
+                    currentMember &&
+                    currentMember.permissionLevel !== PermissionLevel.Admin &&
+                    currentMember.permissionLevel !== PermissionLevel.SuperAdmin
+                ) {
+                    console.log('[XMTP] User is not admin, but trying update (default policy allows all members)');
                 }
 
                 // Perform updates
@@ -1221,7 +1135,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                     }
                 }
 
-                if (updates.description && 'updateDescription' in group) {
+                if (updates.description) {
                     console.log('[XMTP] Updating group description...');
                     try {
                         await group.updateDescription(updates.description);
@@ -1233,10 +1147,8 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                 }
 
                 // Sync again after update to propagate changes
-                if ('sync' in group) {
-                    console.log('[XMTP] Final sync after updates...');
-                    await group.sync();
-                }
+                console.log('[XMTP] Final sync after updates...');
+                await group.sync();
 
                 if (updateSuccess) {
                     // Update local store
@@ -1282,17 +1194,18 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
             if (!client) return [];
 
             try {
-                const conversation = await client.conversations.getConversationById(groupId);
+                const conversation = await (client as Client).conversations.getConversationById(groupId);
                 if (!conversation || !('members' in conversation)) {
                     return [];
                 }
 
-                const members = await (conversation as any).members();
-                return members.map((m: any) => ({
+                const { IdentifierKind, PermissionLevel } = await loadXMTPSDK();
+                const members = await conversation.members();
+                return members.map((m) => ({
                     inboxId: m.inboxId,
-                    address: m.accountIdentity?.identifier || m.inboxId,
-                    isAdmin: m.isAdmin || false,
-                    isSuperAdmin: m.isSuperAdmin || false,
+                    address: m.accountIdentifiers.find((i) => i.identifierKind === IdentifierKind.Ethereum)?.identifier ?? m.inboxId,
+                    isAdmin: m.permissionLevel === PermissionLevel.Admin,
+                    isSuperAdmin: m.permissionLevel === PermissionLevel.SuperAdmin,
                 }));
             } catch (err) {
                 console.error('[XMTP] Get group members error:', err);
@@ -1322,25 +1235,11 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                     return false;
                 }
 
-                // MOCK SEND
-                if (USE_MOCK_XMTP) {
-                    await new Promise(r => setTimeout(r, 300));
-                    messageStore.addMessage(groupId, {
-                        id: Date.now().toString(),
-                        senderAddress: client.inboxId || '',
-                        content: sanitized,
-                        timestamp: new Date(),
-                        isSent: true,
-                    });
-                    return true;
-                }
-
-                // REAL SEND
                 // Optimistic update - add to store immediately for instant UI feedback
                 const optimisticMessageId = `pending-${crypto.randomUUID()}`;
                 const optimisticMessage: StoreMessage = {
                     id: optimisticMessageId,
-                    senderAddress: (client as Client).inboxId || '',
+                    senderAddress: client.inboxId || '',
                     content: sanitized,
                     timestamp: new Date(),
                     isSent: true, // Always true for messages we send
@@ -1351,7 +1250,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
                 console.log('[XMTP] Added optimistic group message to UI');
 
                 // Actually send the message using sendText per SDK v6 API
-                await (conversation as any).sendText(sanitized);
+                await conversation.sendText(sanitized);
                 console.log('[XMTP] Group message sent successfully');
 
                 // Note: The optimistic message will remain with its pending-* ID.
@@ -1374,33 +1273,27 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
         async (groupId: string): Promise<{ isAdmin: boolean; isSuperAdmin: boolean; isMember: boolean }> => {
             const defaultRole = { isAdmin: false, isSuperAdmin: false, isMember: false };
 
-            if (USE_MOCK_XMTP) {
-                return { isAdmin: true, isSuperAdmin: true, isMember: true };
-            }
-
             if (!client) return defaultRole;
 
             try {
-                const { ConsentState } = await loadXMTPSDK();
-                await (client as Client).conversations.syncAll([ConsentState.Allowed]);
-                const conversation = await client.conversations.getConversationById(groupId);
+                const { ConsentState, PermissionLevel } = await loadXMTPSDK();
+                await client.conversations.syncAll([ConsentState.Allowed, ConsentState.Unknown]);
+                const conversation = await (client as Client).conversations.getConversationById(groupId);
 
                 if (!conversation || !('members' in conversation)) {
                     return defaultRole;
                 }
 
-                const members = await (conversation as any).members();
-                const currentMember = members.find(
-                    (m: any) => m.inboxId === (client as Client).inboxId
-                );
+                const members = await conversation.members();
+                const currentMember = members.find((m) => m.inboxId === client.inboxId);
 
                 if (!currentMember) {
                     return defaultRole;
                 }
 
                 return {
-                    isAdmin: currentMember.isAdmin || false,
-                    isSuperAdmin: currentMember.isSuperAdmin || false,
+                    isAdmin: currentMember.permissionLevel === PermissionLevel.Admin,
+                    isSuperAdmin: currentMember.permissionLevel === PermissionLevel.SuperAdmin,
                     isMember: true,
                 };
             } catch (err) {
@@ -1467,14 +1360,14 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
         conversationId: string,
         state: 'allowed' | 'denied'
     ): Promise<boolean> => {
-        if (!client || USE_MOCK_XMTP) {
-            console.log('[XMTP] setConversationConsent: no client or mock mode');
+        if (!client) {
+            console.log('[XMTP] setConversationConsent: no client');
             return false;
         }
 
         try {
             const { ConsentState } = await loadXMTPSDK();
-            const conversation = await (client as Client).conversations.getConversationById(conversationId);
+            const conversation = await client.conversations.getConversationById(conversationId);
 
             if (!conversation) {
                 console.error('[XMTP] Conversation not found:', conversationId);
@@ -1501,8 +1394,8 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
         inboxId: string,
         state: 'allowed' | 'denied'
     ): Promise<boolean> => {
-        if (!client || USE_MOCK_XMTP) {
-            console.log('[XMTP] setInboxIdConsent: no client or mock mode');
+        if (!client) {
+            console.log('[XMTP] setInboxIdConsent: no client');
             return false;
         }
 
@@ -1510,9 +1403,9 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
             const { ConsentState, ConsentEntityType } = await loadXMTPSDK();
             const consentValue = state === 'allowed' ? ConsentState.Allowed : ConsentState.Denied;
 
-            await (client as any).setConsentStates([{
+            await client.preferences.setConsentStates([{
                 entityType: ConsentEntityType.InboxId,
-                entityId: inboxId,
+                entity: inboxId,
                 state: consentValue,
             }]);
 
@@ -1531,13 +1424,13 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
     const getConversationConsent = useCallback(async (
         conversationId: string
     ): Promise<'allowed' | 'denied' | 'unknown' | null> => {
-        if (!client || USE_MOCK_XMTP) {
+        if (!client) {
             return null;
         }
 
         try {
             const { ConsentState } = await loadXMTPSDK();
-            const conversation = await (client as Client).conversations.getConversationById(conversationId);
+            const conversation = await client.conversations.getConversationById(conversationId);
 
             if (!conversation) {
                 return null;
@@ -1558,21 +1451,20 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
      * Load all conversations with Unknown consent state (message requests)
      */
     const loadMessageRequests = useCallback(async (): Promise<Array<{ conversation: Conversation | Group; type: 'dm' | 'group' }>> => {
-        if (!client || USE_MOCK_XMTP) {
+        if (!client) {
             return [];
         }
 
         try {
             const { ConsentState } = await loadXMTPSDK();
-            const xmtpClient = client as Client;
 
             // Sync conversations with Unknown consent state
-            await xmtpClient.conversations.syncAll([ConsentState.Unknown]);
+            await client.conversations.syncAll([ConsentState.Unknown]);
 
             // Get DMs and Groups separately
             const [dms, groups] = await Promise.all([
-                xmtpClient.conversations.listDms(),
-                xmtpClient.conversations.listGroups(),
+                client.conversations.listDms(),
+                client.conversations.listGroups(),
             ]);
 
             const requests: Array<{ conversation: Conversation | Group; type: 'dm' | 'group' }> = [];
@@ -1616,6 +1508,7 @@ export function useSecureXMTP(): UseSecureXMTPReturn {
         sendMessage,
         startConversation,
         checkCanMessage,
+        loadMessageHistory,
         createGroup,
         addGroupMembers,
         removeGroupMembers,

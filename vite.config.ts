@@ -111,7 +111,6 @@ export default defineConfig({
     // XMTP V3 Configuration
     optimizeDeps: {
         exclude: ['@xmtp/wasm-bindings', '@xmtp/browser-sdk'],
-        include: ['@xmtp/proto'],
     },
     build: {
         target: 'esnext',

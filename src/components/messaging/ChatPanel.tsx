@@ -24,13 +24,20 @@ import { LiquidGlassAvatar } from '@/components/ui/LiquidGlassAvatar';
 import { GroupInfoModal } from '@/components/messaging/GroupInfoModal';
 
 interface ChatPanelProps {
-    address: string;
+    conversationId: string;
     onBack?: () => void;
 }
 
-export function ChatPanel({ address, onBack }: ChatPanelProps) {
+// Manually truncate a non-address identifier (e.g. an inbox id) for display.
+const truncateId = (id: string): string => {
+    if (!id) return '';
+    if (id.length <= 12) return id;
+    return `${id.slice(0, 6)}…${id.slice(-4)}`;
+};
+
+export function ChatPanel({ conversationId, onBack }: ChatPanelProps) {
     const { user } = usePrivy();
-    const { sendMessage, isConnected } = useSecureXMTP();
+    const { sendMessage, sendGroupMessage, loadMessageHistory, isConnected } = useSecureXMTP();
     const { identity } = useIdentityStore();
     const { messages, markAsRead, conversations } = useMessageStore();
 
@@ -41,29 +48,30 @@ export function ChatPanel({ address, onBack }: ChatPanelProps) {
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
 
-    // Find conversation by peer address OR topic (for groups)
-    const conversation = conversations.find(
-        (c) => c.peerAddress.toLowerCase() === address?.toLowerCase() || c.topic === address
-    );
+    // Find conversation by XMTP conversation id (topic) — the canonical key
+    const conversation = conversations.find((c) => c.topic === conversationId);
     const chatMessages = conversation ? messages.get(conversation.topic) || [] : [];
-
-    const isMe = address?.toLowerCase() === user?.wallet?.address?.toLowerCase();
-
-    // Peer profile from store (includes ENS data)
-    const peerProfile = usePeerProfileStore((state) =>
-        address ? state.getProfile(address) : null
-    );
 
     // Determine display name and avatar
     const isGroup = conversation?.type === 'group';
+    const peerAddress = !isGroup ? (conversation?.peerAddress || '') : '';
 
-    // Priority: ENS name > peer displayName > generated handle > truncated address
+    const isMe = !isGroup && !!peerAddress && peerAddress.toLowerCase() === user?.wallet?.address?.toLowerCase();
+
+    // Peer profile from store (includes ENS data)
+    const peerProfile = usePeerProfileStore((state) =>
+        peerAddress ? state.getProfile(peerAddress) : null
+    );
+
+    // Priority: ENS name > peer displayName > generated handle > truncated address > truncated inbox id
     const getPeerDisplayName = (): string => {
         if (peerProfile?.ensName) return peerProfile.ensName;
         if (peerProfile?.displayName) return peerProfile.displayName;
-        const handle = address ? getHandleForAddress(address) : null;
+        const handle = peerAddress ? getHandleForAddress(peerAddress) : null;
         if (handle) return handle;
-        return truncateAddress(address || '');
+        if (peerAddress) return truncateAddress(peerAddress);
+        if (conversation?.peerInboxId) return truncateId(conversation.peerInboxId);
+        return 'Unknown';
     };
 
     const finalDisplayName = isMe
@@ -80,13 +88,13 @@ export function ChatPanel({ address, onBack }: ChatPanelProps) {
 
     // Fetch ENS data for peer on mount
     useEffect(() => {
-        if (address && !isMe && !isGroup) {
-            fetchAndStorePeerENS(address);
+        if (peerAddress && !isMe && !isGroup) {
+            fetchAndStorePeerENS(peerAddress);
         }
-    }, [address, isMe, isGroup]);
+    }, [peerAddress, isMe, isGroup]);
 
     const isConsentDenied = conversation?.consentState === 'denied';
-    const isAddressBlocked = (address ? isBlocked(address) : false) || isConsentDenied;
+    const isAddressBlocked = (peerAddress ? isBlocked(peerAddress) : false) || isConsentDenied;
 
     // Scroll to bottom on new messages
     useEffect(() => {
@@ -100,6 +108,14 @@ export function ChatPanel({ address, onBack }: ChatPanelProps) {
         }
     }, [conversation?.topic, markAsRead]);
 
+    // Load message history for this conversation
+    useEffect(() => {
+        if (conversation?.topic && isConnected) {
+            loadMessageHistory(conversation.topic);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [conversation?.topic, isConnected]);
+
     // Auto-resize textarea
     const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         setInputValue(e.target.value);
@@ -110,7 +126,8 @@ export function ChatPanel({ address, onBack }: ChatPanelProps) {
     };
 
     const handleSend = async () => {
-        if (!address || !inputValue.trim() || isSending || !isConnected) return;
+        if (!conversation || !inputValue.trim() || isSending || !isConnected) return;
+        if (!isGroup && !peerAddress) return;
 
         if (!validateMessageLength(inputValue.trim())) {
             hapticError();
@@ -126,7 +143,9 @@ export function ChatPanel({ address, onBack }: ChatPanelProps) {
         triggerHaptic('medium');
         setIsSending(true);
 
-        const success = await sendMessage(address, inputValue.trim());
+        const success = isGroup
+            ? await sendGroupMessage(conversation.topic, inputValue.trim())
+            : await sendMessage(peerAddress, inputValue.trim());
 
         if (success) {
             hapticSuccess();
@@ -149,9 +168,9 @@ export function ChatPanel({ address, onBack }: ChatPanelProps) {
     };
 
     const handleBlock = () => {
-        if (!address) return;
+        if (!peerAddress) return;
         triggerHaptic('heavy');
-        addToBlocklist(address);
+        addToBlocklist(peerAddress);
         setShowActions(false);
         onBack?.();
     };
@@ -199,7 +218,7 @@ export function ChatPanel({ address, onBack }: ChatPanelProps) {
 
                 {/* Avatar - Using LiquidGlassAvatar */}
                 <LiquidGlassAvatar
-                    address={address}
+                    address={peerAddress || conversation?.topic || conversationId}
                     displayName={finalDisplayName}
                     avatarUrl={finalAvatarUrl}
                     size="md"
@@ -259,20 +278,22 @@ export function ChatPanel({ address, onBack }: ChatPanelProps) {
                                             Group Info
                                         </button>
                                     )}
-                                    <button
-                                        onClick={() => {
-                                            navigator.clipboard?.writeText(address || '');
-                                            setShowActions(false);
-                                            triggerHaptic('light');
-                                        }}
-                                        className="w-full px-4 py-2.5 text-left text-gray-700 hover:bg-gray-50 flex items-center gap-2 text-sm"
-                                    >
-                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                        </svg>
-                                        {isGroup ? 'Copy Group ID' : 'Copy Address'}
-                                    </button>
-                                    {!isGroup && (
+                                    {(isGroup || peerAddress) && (
+                                        <button
+                                            onClick={() => {
+                                                navigator.clipboard?.writeText((isGroup ? conversation?.topic : peerAddress) || '');
+                                                setShowActions(false);
+                                                triggerHaptic('light');
+                                            }}
+                                            className="w-full px-4 py-2.5 text-left text-gray-700 hover:bg-gray-50 flex items-center gap-2 text-sm"
+                                        >
+                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                            </svg>
+                                            {isGroup ? 'Copy Group ID' : 'Copy Address'}
+                                        </button>
+                                    )}
+                                    {!isGroup && peerAddress && (
                                         <button
                                             onClick={handleBlock}
                                             className="w-full px-4 py-2.5 text-left text-red-600 hover:bg-red-50 flex items-center gap-2 text-sm"
@@ -369,13 +390,13 @@ export function ChatPanel({ address, onBack }: ChatPanelProps) {
                             rows={1}
                             className="w-full px-4 py-3.5 bg-gray-50 border border-gray-200 rounded-2xl text-gray-900 placeholder-gray-400 focus:border-accent focus:bg-white focus:ring-2 focus:ring-accent/20 focus:outline-none resize-none transition-all duration-200 text-[15px]"
                             style={{ minHeight: '52px', maxHeight: '120px' }}
-                            disabled={!isConnected || isAddressBlocked}
+                            disabled={!isConnected || isAddressBlocked || (!isGroup && !peerAddress)}
                         />
                     </div>
 
                     <button
                         onClick={handleSend}
-                        disabled={!inputValue.trim() || isSending || !isConnected || isAddressBlocked}
+                        disabled={!inputValue.trim() || isSending || !isConnected || isAddressBlocked || (!isGroup && !peerAddress)}
                         className="w-12 h-12 rounded-full bg-gradient-to-br from-gray-800 to-black flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed flex-shrink-0 shadow-lg shadow-gray-900/20 hover:shadow-xl hover:shadow-gray-900/30 active:scale-95 transition-all duration-200"
                         aria-label="Send message"
                     >
