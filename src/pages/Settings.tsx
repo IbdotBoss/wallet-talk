@@ -10,6 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { truncateAddress } from '@/lib/SecurityService';
+import { safeStorage } from '@/lib/safeStorage';
 import { getBlockedAddresses, removeFromBlocklist, clearBlocklist } from '@/lib/BlocklistService';
 import { triggerHaptic, hapticSuccess, hapticError } from '@/lib/haptics';
 import { clearAllLimits } from '@/lib/RateLimiter';
@@ -85,8 +86,8 @@ export function Settings() {
         clearMessages();
         clearBlocklist();
         clearAllLimits();
-        localStorage.removeItem('antigravity_handles');
-        localStorage.removeItem('antigravity-identity');
+        safeStorage.removeItem('antigravity_handles');
+        safeStorage.removeItem('antigravity-identity');
         hapticSuccess();
         setShowClearConfirm(false);
     };

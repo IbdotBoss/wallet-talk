@@ -39,6 +39,35 @@ const PLAYFUL_NOUNS = [
 
 
 // LocalStorage key for handle → address mapping
+
+/**
+ * Safe localStorage access with try/catch for private/incognito mode support.
+ * Safari private mode throws QUOTA_EXCEEDED_ERROR on any setItem/getItem.
+ */
+const safeLocalStorage = {
+  getItem(key: string): string | null {
+    try {
+      return safeLocalStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  },
+  setItem(key: string, value: string): void {
+    try {
+      safeLocalStorage.setItem(key, value);
+    } catch {
+      // Silently fail in private mode where storage is disabled
+    }
+  },
+  removeItem(key: string): void {
+    try {
+      safeLocalStorage.removeItem(key);
+    } catch {
+      // Silently fail
+    }
+  },
+};
+
 const HANDLE_STORAGE_KEY = 'antigravity_handles';
 
 interface HandleMapping {
@@ -71,7 +100,7 @@ export function generateHandle(): string {
  */
 function getHandleMappings(): HandleMapping {
     try {
-        const stored = localStorage.getItem(HANDLE_STORAGE_KEY);
+        const stored = safeLocalStorage.getItem(HANDLE_STORAGE_KEY);
         return stored ? JSON.parse(stored) : {};
     } catch {
         return {};
@@ -83,7 +112,7 @@ function getHandleMappings(): HandleMapping {
  */
 function saveHandleMappings(mappings: HandleMapping): void {
     try {
-        localStorage.setItem(HANDLE_STORAGE_KEY, JSON.stringify(mappings));
+        safeLocalStorage.setItem(HANDLE_STORAGE_KEY, JSON.stringify(mappings));
     } catch (error) {
         logSecurityEvent('Failed to save handle mapping', { error });
     }
@@ -152,7 +181,7 @@ export function registerHandle(address: string): string {
  */
 export function clearHandleMappings(): void {
     try {
-        localStorage.removeItem(HANDLE_STORAGE_KEY);
+        safeLocalStorage.removeItem(HANDLE_STORAGE_KEY);
     } catch {
         // Silent fail
     }
@@ -184,7 +213,7 @@ export function updateDisplayName(address: string, displayName: string): void {
 
     const key = `antigravity_displayname_${address.toLowerCase()}`;
     try {
-        localStorage.setItem(key, displayName);
+        safeLocalStorage.setItem(key, displayName);
     } catch (error) {
         logSecurityEvent('Failed to save display name', { error });
     }
@@ -198,7 +227,7 @@ export function getDisplayName(address: string): string | null {
 
     const key = `antigravity_displayname_${address.toLowerCase()}`;
     try {
-        return localStorage.getItem(key);
+        return safeLocalStorage.getItem(key);
     } catch {
         return null;
     }
