@@ -30,13 +30,13 @@ import { PillNavTabs, type TabItem } from '@/components/messaging/PillNavTabs';
 import { MessageRequestCard } from '@/components/messaging/MessageRequestCard';
 
 interface ConversationsSidebarProps {
-    onSelectConversation: (addressOrTopic: string, type?: 'dm' | 'group') => void;
-    selectedAddress?: string;
+    onSelectConversation: (conversationId: string) => void;
+    selectedConversationId?: string;
 }
 
 export function ConversationsSidebar({
     onSelectConversation,
-    selectedAddress
+    selectedConversationId
 }: ConversationsSidebarProps) {
     const navigate = useNavigate();
     const {
@@ -196,7 +196,7 @@ export function ConversationsSidebar({
             if (conversation) {
                 hapticSuccess();
                 setShowNewChat(false);
-                onSelectConversation(addressToUse, 'dm');
+                onSelectConversation(conversation.id);
             } else {
                 setInputError('Failed to start conversation. User may not be on XMTP.');
                 hapticError();
@@ -210,7 +210,7 @@ export function ConversationsSidebar({
     };
 
     const handleGroupCreated = (groupId: string) => {
-        onSelectConversation(groupId, 'group');
+        onSelectConversation(groupId);
     };
 
     const handleTabChange = (tabId: string) => {
@@ -488,12 +488,9 @@ export function ConversationsSidebar({
                                             <ConversationItem
                                                 key={conv.topic}
                                                 conversation={conv}
-                                                isSelected={selectedAddress === conv.peerAddress || selectedAddress === conv.topic}
+                                                isSelected={selectedConversationId === conv.topic}
                                                 isPinned={true}
-                                                onSelect={() => onSelectConversation(
-                                                    conv.type === 'group' ? conv.topic : conv.peerAddress,
-                                                    conv.type
-                                                )}
+                                                onSelect={() => onSelectConversation(conv.topic)}
                                                 formatTime={formatTime}
                                             />
                                         ))}
@@ -505,12 +502,9 @@ export function ConversationsSidebar({
                                     <ConversationItem
                                         key={conv.topic}
                                         conversation={conv}
-                                        isSelected={selectedAddress === conv.peerAddress || selectedAddress === conv.topic}
+                                        isSelected={selectedConversationId === conv.topic}
                                         isPinned={false}
-                                        onSelect={() => onSelectConversation(
-                                            conv.type === 'group' ? conv.topic : conv.peerAddress,
-                                            conv.type
-                                        )}
+                                        onSelect={() => onSelectConversation(conv.topic)}
                                         formatTime={formatTime}
                                     />
                                 ))}
@@ -677,9 +671,14 @@ function ConversationItem({
         }
     }, [isGroup, conversation.peerAddress]);
 
-    // Generate handle as fallback
-    const peerHandle = !isGroup ? getHandleForAddress(conversation.peerAddress) : null;
+    // Generate handle as fallback (guard against empty/unresolved peerAddress)
+    const peerHandle = !isGroup && conversation.peerAddress ? getHandleForAddress(conversation.peerAddress) : null;
     const isMe = !isGroup && identity && conversation.peerAddress.toLowerCase() === identity.walletAddress.toLowerCase();
+
+    // Truncated inbox id fallback for DMs whose peer address couldn't be resolved
+    const truncatedInboxId = conversation.peerInboxId
+        ? `${conversation.peerInboxId.slice(0, 6)}…${conversation.peerInboxId.slice(-4)}`
+        : '';
 
     // Display name logic with ENS priority
     let displayName: string;
@@ -703,10 +702,10 @@ function ConversationItem({
         } else if (peerProfile?.displayName) {
             displayName = peerProfile.displayName;
         } else {
-            displayName = peerHandle || truncateAddress(conversation.peerAddress);
+            displayName = peerHandle || truncateAddress(conversation.peerAddress) || truncatedInboxId || 'Unknown';
         }
         avatarUrl = peerProfile?.ensAvatar || peerProfile?.avatarUrl || undefined;
-        avatarAddress = conversation.peerAddress;
+        avatarAddress = conversation.peerAddress || conversation.peerInboxId || conversation.topic;
     }
 
     return (

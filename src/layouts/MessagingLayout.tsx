@@ -16,7 +16,7 @@ import { EmptyChatState } from '@/components/messaging/EmptyChatState';
 
 export function MessagingLayout() {
     const navigate = useNavigate();
-    const { address } = useParams<{ address?: string }>();
+    const { conversationId } = useParams<{ conversationId?: string }>();
     const [isMobile, setIsMobile] = useState(false);
 
     // Check for mobile viewport
@@ -28,8 +28,8 @@ export function MessagingLayout() {
     }, []);
 
     // Handle selecting a conversation
-    const handleSelectConversation = (peerAddress: string) => {
-        navigate(`/messages/${peerAddress}`);
+    const handleSelectConversation = (conversationId: string) => {
+        navigate(`/messages/${conversationId}`);
     };
 
     // Handle back navigation (mobile)
@@ -39,13 +39,13 @@ export function MessagingLayout() {
 
     // Mobile: Show only sidebar or chat based on route
     if (isMobile) {
-        if (address) {
-            return <ChatPanel address={address} onBack={handleBack} />;
+        if (conversationId) {
+            return <ChatPanel conversationId={conversationId} onBack={handleBack} />;
         }
         return (
             <ConversationsSidebar
                 onSelectConversation={handleSelectConversation}
-                selectedAddress={undefined}
+                selectedConversationId={undefined}
             />
         );
     }
@@ -57,23 +57,23 @@ export function MessagingLayout() {
             <div className="w-80 flex-shrink-0 border-r border-gray-200 bg-white">
                 <ConversationsSidebar
                     onSelectConversation={handleSelectConversation}
-                    selectedAddress={address}
+                    selectedConversationId={conversationId}
                 />
             </div>
 
             {/* Right Panel - Fluid width */}
             <div className="flex-1 bg-white">
                 <AnimatePresence mode="wait">
-                    {address ? (
+                    {conversationId ? (
                         <motion.div
-                            key={address}
+                            key={conversationId}
                             initial={{ opacity: 0, x: 20 }}
                             animate={{ opacity: 1, x: 0 }}
                             exit={{ opacity: 0, x: -20 }}
                             transition={{ duration: 0.2 }}
                             className="h-full"
                         >
-                            <ChatPanel address={address} onBack={handleBack} />
+                            <ChatPanel conversationId={conversationId} onBack={handleBack} />
                         </motion.div>
                     ) : (
                         <motion.div
